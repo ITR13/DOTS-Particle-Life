@@ -18,5 +18,5 @@ public struct ParticleColor : ISharedComponentData
 
 public struct ParticleChunk : ISharedComponentData
 {
-    public uint2 Value;
+    public int2 Value;
 }

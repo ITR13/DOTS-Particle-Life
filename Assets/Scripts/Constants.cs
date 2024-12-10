@@ -9,12 +9,12 @@ namespace DefaultNamespace
         public const float MinDistance = 3f;
         public const float Drag = 0.85f;
 
-        public const float MaxForce = 0.002f;
+        public const float MaxForce = 0.002f * 8;
         public static float2 MaxSize => new float2(ChunkSize * MapSize, ChunkSize * MapSize);
 
-        public static uint2 PosToChunk(float2 pos)
+        public static int2 PosToChunk(float2 pos)
         {
-            return (uint2)(pos / ChunkSize);
+            return (int2)(pos / ChunkSize);
         }
     }
 }

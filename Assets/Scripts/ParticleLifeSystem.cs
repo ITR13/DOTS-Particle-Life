@@ -26,26 +26,22 @@ namespace DefaultNamespace
 
             var particleQuery = SystemAPI.QueryBuilder()
                 .WithAllRW<ParticleVelocity>()
-                .WithAll<ParticlePosition, ParticleChunk>()
+                .WithAll<ParticlePosition, ParticleChunk, ParticleColor>()
                 .Build();
 
             var archetypes = particleQuery.ToArchetypeChunkArray(Allocator.Temp);
             if (archetypes.Length == 0) return;
 
-            var chunkToIndex = new NativeHashMap<uint2, NativeList<int>>(archetypes.Length, Allocator.Temp);
-
-            var chunkTypeHandle = SystemAPI.GetSharedComponentTypeHandle<ParticleChunk>();
-            for (var index = 0; index < archetypes.Length; index++)
+            var chunkPosToChunk = new NativeParallelMultiHashMap<int2, ArchetypeChunk>(
+                archetypes.Length,
+                state.WorldUpdateAllocator
+            );
+            var chunkPositionTypeHandle = SystemAPI.GetSharedComponentTypeHandle<ParticleChunk>();
+            foreach (var archetypeChunk in archetypes)
             {
-                var archetype = archetypes[index];
-                var chunk = archetype.GetSharedComponent(chunkTypeHandle).Value;
-                if (!chunkToIndex.TryGetValue(chunk, out var list))
-                {
-                    list = new NativeList<int>(4, Allocator.Temp);
-                    chunkToIndex[chunk] = list;
-                }
-
-                list.Add(index);
+                var archetype = archetypeChunk;
+                var chunkPosition = archetype.GetSharedComponent(chunkPositionTypeHandle).Value;
+                chunkPosToChunk.Add(chunkPosition, archetypeChunk);
             }
 
             var positionTypeHandle = SystemAPI.GetComponentTypeHandle<ParticlePosition>();
@@ -56,59 +52,19 @@ namespace DefaultNamespace
             var mapSize = new uint2((uint)Constants.MapSize - 1, (uint)Constants.MapSize - 1);
             var maxSize = Constants.MaxSize;
 
-            var jobs = new NativeArray<JobHandle>(archetypes.Length, Allocator.Temp);
-            for (var chunkIndex = 0; chunkIndex < archetypes.Length; chunkIndex++)
+            state.Dependency = new AttractParticles
             {
-                var color = (int)archetypes[chunkIndex].GetSharedComponent(colorTypeHandle).Value;
+                PositionTypeHandle = positionTypeHandle,
+                VelocityTypeHandle = velocityTypeHandle,
+                ChunkPositionTypeHandle = chunkPositionTypeHandle,
+                ColorTypeHandle = colorTypeHandle,
+                ChunkPosToChunk = chunkPosToChunk,
 
-                jobs[chunkIndex] =
-                    new AttractParticlesSingle
-                    {
-                        PositionTypeHandle = positionTypeHandle,
-                        VelocityTypeHandle = velocityTypeHandle,
-                        MinDistance = minDistance,
-                        MaxDistance = maxDistance,
-                        InnerForce = Constants.MaxForce * 2,
-                        OuterForce = attraction[color][color],
-
-                        Chunk = archetypes[chunkIndex],
-                    }.Schedule(state.Dependency);
-
-                var chunk = archetypes[chunkIndex];
-                var chunkPosition = chunk.GetSharedComponent(chunkTypeHandle).Value;
-                for (var dy = -1; dy <= 1; dy++)
-                {
-                    for (var dx = -1; dx <= 1; dx++)
-                    {
-                        // ReSharper disable twice IntVariableOverflowInUncheckedContext
-                        var otherChunkPosition = (chunkPosition + new uint2((uint)dx, (uint)dy)) & mapSize;
-                        if (!chunkToIndex.TryGetValue(otherChunkPosition, out var list)) continue;
-
-                        foreach (var otherIndex in list)
-                        {
-                            if (otherIndex == chunkIndex) continue;
-                            var otherChunk = archetypes[otherIndex];
-                            var otherColor = (int)otherChunk.GetSharedComponent(colorTypeHandle).Value;
-
-                            jobs[chunkIndex] =
-                                new AttractParticlesDuo
-                                {
-                                    PositionTypeHandle = positionTypeHandle,
-                                    VelocityTypeHandle = velocityTypeHandle,
-                                    MinDistance = minDistance,
-                                    MaxDistance = maxDistance,
-                                    InnerForce = Constants.MaxForce * 2,
-                                    OuterForce = attraction[color][otherColor],
-
-                                    Chunks1 = chunk,
-                                    Chunks2 = otherChunk,
-                                }.Schedule(jobs[chunkIndex]);
-                        }
-                    }
-                }
-            }
-
-            state.Dependency = JobHandle.CombineDependencies(jobs);
+                MinDistance = minDistance,
+                MaxDistance = maxDistance,
+                InnerForce = Constants.MaxForce * 2,
+                Attraction = attraction,
+            }.ScheduleParallel(particleQuery, state.Dependency);
 
             // TODO: Convert these jobs into a single job
             state.Dependency = new DragJob().ScheduleParallel(state.Dependency);
@@ -124,106 +80,87 @@ namespace DefaultNamespace
             {
                 PositionTypeHandle = positionTypeHandle,
                 EntityTypeHandle = entityTypeHandle,
-                ChunkTypeHandle = chunkTypeHandle,
+                ChunkTypeHandle = chunkPositionTypeHandle,
                 Ecb = ecb.AsParallelWriter(),
             }.ScheduleParallel(query, state.Dependency);
         }
 
         [BurstCompile]
-        private struct AttractParticlesDuo : IJob
+        private struct AttractParticles : IJobChunk
         {
+            [ReadOnly] public NativeParallelMultiHashMap<int2, ArchetypeChunk> ChunkPosToChunk;
+
             [ReadOnly] public ComponentTypeHandle<ParticlePosition> PositionTypeHandle;
+            [ReadOnly] public SharedComponentTypeHandle<ParticleChunk> ChunkPositionTypeHandle;
+            [ReadOnly] public SharedComponentTypeHandle<ParticleColor> ColorTypeHandle;
 
             [NativeDisableContainerSafetyRestriction]
             public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
 
-            public ArchetypeChunk Chunks1, Chunks2;
-
             public float MinDistance, MaxDistance;
-            public float OuterForce, InnerForce;
+            public float InnerForce;
+            public float4x4 Attraction;
 
-            public void Execute()
+            public void Execute(
+                in ArchetypeChunk chunk,
+                int unfilteredChunkIndex,
+                bool useEnabledMask,
+                in v128 chunkEnabledMask
+            )
             {
-                var overlapDir = new float2(math.sign(Chunks1.SequenceNumber - Chunks2.SequenceNumber), 0);
+                Assert.IsFalse(useEnabledMask);
+                var positions = chunk.GetNativeArray(ref PositionTypeHandle).Reinterpret<float2>();
+                var velocities = chunk.GetNativeArray(ref VelocityTypeHandle).Reinterpret<float2>();
 
-                var positions1 = Chunks1.GetNativeArray(ref PositionTypeHandle).Reinterpret<float2>();
-                var positions2 = Chunks2.GetNativeArray(ref PositionTypeHandle).Reinterpret<float2>();
-
-                var velocity1 = Chunks1.GetNativeArray(ref VelocityTypeHandle).Reinterpret<float2>();
-
-                var distances = new NativeArray<float>(positions2.Length, Allocator.Temp);
-                var directions = new NativeArray<float2>(positions2.Length, Allocator.Temp);
-
-                var multiplier = new NativeArray<float>(positions2.Length, Allocator.Temp);
-                for (var i = 0; i < positions1.Length; i++)
-                {
-                    for (var j = 0; j < positions2.Length; j++)
-                    {
-                        directions[j] = positions1[i] - positions2[j];
-                    }
-
-                    for (var j = 0; j < positions2.Length; j++)
-                    {
-                        distances[j] = math.length(directions[j]);
-                    }
-
-                    for (var j = 0; j < positions2.Length; j++)
-                    {
-                        directions[j] = (distances[j] > 0 ? directions[j] / distances[j] : overlapDir);
-                    }
-
-                    for (var j = 0; j < positions2.Length; j++)
-                    {
-                        multiplier[j] = (distances[j] < MinDistance ? 0 : 1);
-                    }
-
-                    var velocityChange = float2.zero;
-                    for (var j = 0; j < positions2.Length; j++)
-                    {
-                        velocityChange += (1 - multiplier[j]) * InnerForce * directions[j];
-                    }
-
-                    for (var j = 0; j < positions2.Length; j++)
-                    {
-                        multiplier[j] *= (distances[j] > MaxDistance ? 0 : 1);
-                    }
-
-                    for (var j = 0; j < positions2.Length; j++)
-                    {
-                        distances[j] = math.unlerp(MinDistance, MaxDistance, distances[j]);
-                    }
-
-                    for (var j = 0; j < positions2.Length; j++)
-                    {
-                        velocityChange += multiplier[j] * math.lerp(OuterForce, 0, distances[j]) * directions[j];
-                    }
-
-                    velocity1[i] += velocityChange;
-                }
-            }
-        }
-
-        [BurstCompile]
-        private struct AttractParticlesSingle : IJob
-        {
-            [ReadOnly] public ComponentTypeHandle<ParticlePosition> PositionTypeHandle;
-
-            [NativeDisableContainerSafetyRestriction]
-            public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
-
-            public ArchetypeChunk Chunk;
-
-            public float MinDistance, MaxDistance;
-            public float OuterForce, InnerForce;
-
-            public void Execute()
-            {
-                var positions = Chunk.GetNativeArray(ref PositionTypeHandle).Reinterpret<float2>();
-                var velocity = Chunk.GetNativeArray(ref VelocityTypeHandle).Reinterpret<float2>();
+                var color = chunk.GetSharedComponent(ColorTypeHandle).Value;
+                var chunkPosition = chunk.GetSharedComponent(ChunkPositionTypeHandle).Value;
 
                 var distances = new NativeArray<float>(positions.Length, Allocator.Temp);
                 var directions = new NativeArray<float2>(positions.Length, Allocator.Temp);
                 var multiplier = new NativeArray<float>(positions.Length, Allocator.Temp);
+
+                UpdateInner(distances, directions, multiplier, positions, velocities, Attraction[color][color]);
+                for (var dy = -1; dy <= 1; dy++)
+                {
+                    for (var dx = -1; dx <= 1; dx++)
+                    {
+                        var otherChunkPosition = chunkPosition + new int2(dx, dy);
+                        for (var i = 0; i < 2; i++)
+                        {
+                            if (otherChunkPosition[i] < 0) otherChunkPosition[i] += Constants.MapSize;
+                            else if (otherChunkPosition[i] >= Constants.MapSize) otherChunkPosition[i] -= Constants.MapSize;
+                        }
+                        
+                        foreach (var otherChunk in ChunkPosToChunk.GetValuesForKey(otherChunkPosition))
+                        {
+                            var otherColor = otherChunk.GetSharedComponent(ColorTypeHandle).Value;
+                            var otherPositions =
+                                otherChunk.GetNativeArray(ref PositionTypeHandle).Reinterpret<float2>();
+                            var overlapDir = new float2(math.sign(chunk.SequenceNumber - otherChunk.SequenceNumber), 0);
+                            UpdateOuter(
+                                distances,
+                                directions,
+                                multiplier,
+                                positions,
+                                otherPositions,
+                                velocities,
+                                Attraction[color][otherColor],
+                                overlapDir
+                            );
+                        }
+                    }
+                }
+            }
+
+            private void UpdateInner(
+                NativeArray<float> distances,
+                NativeArray<float2> directions,
+                NativeArray<float> multiplier,
+                NativeArray<float2> positions,
+                NativeArray<float2> velocities,
+                float outerForce
+            )
+            {
                 for (var i = positions.Length - 1; i > 0; i--)
                 {
                     for (var j = 0; j < i; j++)
@@ -254,7 +191,7 @@ namespace DefaultNamespace
 
                     for (var j = 0; j < i; j++)
                     {
-                        velocity[j] += (1 - multiplier[j]) * -InnerForce * directions[j];
+                        velocities[j] += (1 - multiplier[j]) * -InnerForce * directions[j];
                     }
 
                     for (var j = 0; j < i; j++)
@@ -264,7 +201,7 @@ namespace DefaultNamespace
 
                     for (var j = 0; j < i; j++)
                     {
-                        distances[j] = math.remap(MinDistance, MaxDistance, OuterForce, 0, distances[j]) *
+                        distances[j] = math.remap(MinDistance, MaxDistance, outerForce, 0, distances[j]) *
                                        multiplier[j];
                     }
 
@@ -275,10 +212,65 @@ namespace DefaultNamespace
 
                     for (var j = 0; j < i; j++)
                     {
-                        velocity[j] -= distances[j] * directions[j];
+                        velocities[j] -= distances[j] * directions[j];
                     }
 
-                    velocity[i] += velocityChange;
+                    velocities[i] += velocityChange;
+                }
+            }
+
+            private void UpdateOuter(
+                NativeArray<float> distances,
+                NativeArray<float2> directions,
+                NativeArray<float> multiplier,
+                NativeArray<float2> positions,
+                NativeArray<float2> otherPositions,
+                NativeArray<float2> velocities,
+                float outerForce,
+                float2 overlapDir
+            )
+            {
+                foreach (var otherPosition in otherPositions)
+                {
+                    for (var i = 0; i < positions.Length; i++)
+                    {
+                        directions[i] = otherPosition - positions[i];
+                    }
+
+                    for (var i = 0; i < positions.Length; i++)
+                    {
+                        distances[i] = math.length(directions[i]);
+                    }
+
+                    for (var i = 0; i < positions.Length; i++)
+                    {
+                        directions[i] = (distances[i] > 0 ? directions[i] / distances[i] : overlapDir);
+                    }
+
+                    for (var i = 0; i < positions.Length; i++)
+                    {
+                        multiplier[i] = (distances[i] < MinDistance ? 0 : 1);
+                    }
+
+                    for (var i = 0; i < positions.Length; i++)
+                    {
+                        velocities[i] += (1 - multiplier[i]) * InnerForce * directions[i];
+                    }
+
+                    for (var i = 0; i < positions.Length; i++)
+                    {
+                        multiplier[i] *= (distances[i] > MaxDistance ? 0 : 1);
+                    }
+
+                    for (var i = 0; i < positions.Length; i++)
+                    {
+                        distances[i] = math.unlerp(MinDistance, MaxDistance, distances[i]);
+                    }
+
+                    for (var i = 0; i < positions.Length; i++)
+                    {
+                        velocities[i] += multiplier[i] * math.lerp(outerForce, 0, distances[i]) * directions[i];
+                    }
                 }
             }
         }

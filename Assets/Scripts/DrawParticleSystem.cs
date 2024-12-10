@@ -4,6 +4,7 @@ using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace DefaultNamespace
@@ -48,10 +49,10 @@ namespace DefaultNamespace
                 }
             }
 #else
-            for (var i = 0; i < image.Length; i++)
+            state.Dependency = new ClearImageJob
             {
-                image[i] = 0xFF000000;
-            }
+                Image = image,
+            }.Schedule(image.Length, ImageSize, state.Dependency);
 #endif
             var colorTypeHandle = SystemAPI.GetSharedComponentTypeHandle<ParticleColor>();
             var positionTypeHandle = SystemAPI.GetComponentTypeHandle<ParticlePosition>();
@@ -67,6 +68,18 @@ namespace DefaultNamespace
                 PositionTypeHandle = positionTypeHandle,
                 Image = image,
             }.ScheduleParallel(query, state.Dependency);
+        }
+
+        [BurstCompile]
+        private struct ClearImageJob : IJobParallelFor
+        {
+            [NativeDisableContainerSafetyRestriction]
+            public NativeArray<uint> Image;
+
+            public void Execute(int index)
+            {
+                Image[index] = 0xFF000000;
+            }
         }
 
         [BurstCompile]
