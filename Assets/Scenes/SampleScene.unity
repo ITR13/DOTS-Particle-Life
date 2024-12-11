@@ -477,7 +477,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 1080, y: 1080}
+  m_SizeDelta: {x: 1024, y: 1024}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1844151103
 MonoBehaviour:
@@ -502,10 +502,10 @@ MonoBehaviour:
   m_Texture: {fileID: 8400000, guid: fa46a0c2851d7a94d950bc061aa0d4fa, type: 2}
   m_UVRect:
     serializedVersion: 2
-    x: -0.027344
-    y: -0.027344
-    width: 1.0546875
-    height: 1.0546875
+    x: 0
+    y: 0
+    width: 1
+    height: 1
 --- !u!222 &1844151104
 CanvasRenderer:
   m_ObjectHideFlags: 0

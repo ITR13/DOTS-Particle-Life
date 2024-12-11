@@ -13,7 +13,7 @@ namespace DefaultNamespace
 
         public void OnCreate(ref SystemState state)
         {
-            _texture = new Texture2D(512, 512, TextureFormat.RGBA32, false);
+            _texture = new Texture2D(Constants.ImageSize, Constants.ImageSize, TextureFormat.RGBA32, false);
             state.RequireForUpdate<ParticleImage>();
         }
 

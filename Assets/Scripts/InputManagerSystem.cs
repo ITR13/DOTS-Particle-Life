@@ -21,6 +21,44 @@ namespace DefaultNamespace
         public void OnUpdate(ref SystemState state)
         {
             if (Input.GetKeyDown(KeyCode.R)) RandomizeAttraction();
+            if (Input.GetMouseButton(0))
+            {
+                ref var singleton = ref SystemAPI.GetSingletonRW<ParticleImage>().ValueRW;
+                singleton.ZoomAmount = 4;
+                var mousePos = Input.mousePosition;
+
+                float2 normalizedMousePos;
+                if (Screen.width > Screen.height)
+                {
+                    var offset = (Screen.width - Screen.height) / 2f;
+                    normalizedMousePos = new float2(
+                        (mousePos.x - offset) / Screen.height,
+                        mousePos.y / Screen.height
+                    );
+                }
+                else
+                {
+                    var offset = (Screen.height - Screen.width) / 2f;
+                    normalizedMousePos = new float2(
+                        mousePos.x / Screen.width,
+                        (mousePos.y - offset) / Screen.width
+                    );
+                }
+
+                var zoomMinOffset = Constants.ImageSize - Constants.ImageSize / singleton.ZoomAmount;
+
+                singleton.ZoomLocation = math.clamp(
+                    Constants.ImageSize * (normalizedMousePos - 0.5f / singleton.ZoomAmount),
+                    new float2(zoomMinOffset, zoomMinOffset),
+                    new float2(Constants.ImageSize - zoomMinOffset, Constants.ImageSize - zoomMinOffset)
+                );
+            }
+            else if (Input.GetMouseButtonUp(0))
+            {
+                ref var singleton = ref SystemAPI.GetSingletonRW<ParticleImage>().ValueRW;
+                singleton.ZoomAmount = 1;
+                singleton.ZoomLocation = float2.zero;
+            }
         }
 
         private void RandomizeAttraction()

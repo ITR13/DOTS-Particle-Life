@@ -12,7 +12,6 @@ namespace DefaultNamespace
     [UpdateBefore(typeof(ParticleLifeSystem))]
     public partial struct DrawParticleSystem : ISystem
     {
-        private const int ImageSize = 512;
         private NativeArray<uint> _image;
 
         private int _chunkCounter;
@@ -20,10 +19,11 @@ namespace DefaultNamespace
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            _image = new NativeArray<uint>(ImageSize * ImageSize, Allocator.Domain);
+            _image = new NativeArray<uint>(Constants.ImageSize * Constants.ImageSize, Allocator.Domain);
             state.EntityManager.CreateSingleton(
                 new ParticleImage
                 {
+                    ZoomAmount = 1,
                     Image = _image,
                 }
             );
@@ -33,7 +33,8 @@ namespace DefaultNamespace
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var image = SystemAPI.GetSingleton<ParticleImage>().Image;
+            var particleImage = SystemAPI.GetSingleton<ParticleImage>();
+            var image = particleImage.Image;
 
 #if FAST_RENDER
             var chunk = new uint2((uint)(_chunkCounter % Constants.MapSize), (uint)(_chunkCounter / Constants.MapSize));
@@ -52,7 +53,7 @@ namespace DefaultNamespace
             state.Dependency = new ClearImageJob
             {
                 Image = image,
-            }.Schedule(image.Length, ImageSize, state.Dependency);
+            }.Schedule(image.Length, Constants.ImageSize, state.Dependency);
 #endif
             var colorTypeHandle = SystemAPI.GetSharedComponentTypeHandle<ParticleColor>();
             var positionTypeHandle = SystemAPI.GetComponentTypeHandle<ParticlePosition>();
@@ -67,6 +68,9 @@ namespace DefaultNamespace
                 ColorTypeHandle = colorTypeHandle,
                 PositionTypeHandle = positionTypeHandle,
                 Image = image,
+
+                ZoomAmount = particleImage.ZoomAmount,
+                Offset = particleImage.ZoomLocation,
             }.ScheduleParallel(query, state.Dependency);
         }
 
@@ -91,6 +95,9 @@ namespace DefaultNamespace
             [NativeDisableContainerSafetyRestriction]
             public NativeArray<uint> Image;
 
+            public float ZoomAmount;
+            public float2 Offset;
+
             public void Execute(
                 in ArchetypeChunk chunk,
                 int unfilteredChunkIndex,
@@ -107,10 +114,12 @@ namespace DefaultNamespace
 
                 for (var i = 0; i < positions.Length; i++)
                 {
-                    var pos = positions[i].Value * (ImageSize / Constants.MaxSize);
-                    var posInt = math.clamp((int2)pos, int2.zero, new int2(ImageSize - 1, ImageSize - 1));
+                    var pos = positions[i].Value * (Constants.ImageSize / Constants.MaxSize) - Offset;
+                    pos *= ZoomAmount;
+                    if (math.any(pos < 0 | pos >= Constants.ImageSize)) continue;
+                    var posInt = (int2)pos;
                     // This isn't actually thread-safe, but who cares lol
-                    Image[posInt.y * ImageSize + posInt.x] |= colorInt;
+                    Image[posInt.y * Constants.ImageSize + posInt.x] |= colorInt;
                 }
             }
         }

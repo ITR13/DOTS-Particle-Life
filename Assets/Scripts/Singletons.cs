@@ -11,6 +11,8 @@ namespace DefaultNamespace
 
     public struct ParticleImage : IComponentData
     {
+        public float ZoomAmount;
+        public float2 ZoomLocation;
         public NativeArray<uint> Image;
     }
 }

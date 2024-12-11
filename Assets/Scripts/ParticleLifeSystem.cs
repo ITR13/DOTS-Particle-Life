@@ -142,15 +142,16 @@ namespace DefaultNamespace
                         var offset = float2.zero;
                         for (var i = 0; i < 2; i++)
                         {
-                            if (otherChunkPosition[i] < 0)
+                            switch (otherChunkPosition[i])
                             {
-                                otherChunkPosition[i] += Constants.MapSize;
-                                offset[i] = Constants.MapSize * Constants.ChunkSize;
-                            }
-                            else if (otherChunkPosition[i] >= Constants.MapSize)
-                            {
-                                otherChunkPosition[i] -= Constants.MapSize;
-                                offset[i] = -Constants.MapSize * Constants.ChunkSize;
+                                case < 0:
+                                    otherChunkPosition[i] += Constants.MapSize;
+                                    offset[i] = Constants.MapSize * Constants.ChunkSize;
+                                    break;
+                                case >= Constants.MapSize:
+                                    otherChunkPosition[i] -= Constants.MapSize;
+                                    offset[i] = -Constants.MapSize * Constants.ChunkSize;
+                                    break;
                             }
                         }
 
