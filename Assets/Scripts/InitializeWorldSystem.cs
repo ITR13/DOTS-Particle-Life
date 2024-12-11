@@ -9,8 +9,8 @@ namespace DefaultNamespace
     public partial struct InitializeWorldSystem : ISystem
     {
         private const int Colors = 4;
-        private const int Repeats = 25 * Colors;
-        private const int TotalParticles = 1000;
+        private const int Repeats = 8 * Colors;
+        private const int TotalParticles = 1024;
 
         private int _repeats;
         private EntityArchetype _archetype;
@@ -27,7 +27,7 @@ namespace DefaultNamespace
             types[3] = ComponentType.ReadOnly<ParticleColor>();
             _archetype = state.EntityManager.CreateArchetype(types);
 
-            _random = new Random(1337);
+            _random = new Random(421337);
         }
 
         [BurstCompile]
@@ -38,7 +38,7 @@ namespace DefaultNamespace
             {
                 var maxAttraction = new float4(1, 1, 1, 1) * Constants.MaxForce;
 
-                state.EntityManager.CreateSingleton(
+                var attraction =
                     new ParticleAttraction
                     {
                         Value = new float4x4(
@@ -47,8 +47,9 @@ namespace DefaultNamespace
                             _random.NextFloat4(-maxAttraction, maxAttraction),
                             _random.NextFloat4(-maxAttraction, maxAttraction)
                         ),
-                    }
-                );
+                    };
+                
+                state.EntityManager.CreateSingleton(attraction);
             }
             
             var entities = state.EntityManager.CreateEntity(_archetype, TotalParticles, Allocator.Temp);

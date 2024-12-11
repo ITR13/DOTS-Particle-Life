@@ -4,7 +4,6 @@ using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
-using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace DefaultNamespace
@@ -125,14 +124,25 @@ namespace DefaultNamespace
                     for (var dx = -1; dx <= 1; dx++)
                     {
                         var otherChunkPosition = chunkPosition + new int2(dx, dy);
+                        var offset = float2.zero;
                         for (var i = 0; i < 2; i++)
                         {
-                            if (otherChunkPosition[i] < 0) otherChunkPosition[i] += Constants.MapSize;
-                            else if (otherChunkPosition[i] >= Constants.MapSize) otherChunkPosition[i] -= Constants.MapSize;
+                            if (otherChunkPosition[i] < 0)
+                            {
+                                otherChunkPosition[i] += Constants.MapSize;
+                                offset[i] = Constants.MapSize * Constants.ChunkSize;
+                            }
+                            else if (otherChunkPosition[i] >= Constants.MapSize)
+                            {
+                                otherChunkPosition[i] -= Constants.MapSize;
+                                offset[i] = -Constants.MapSize * Constants.ChunkSize;
+                            }
                         }
-                        
+
                         foreach (var otherChunk in ChunkPosToChunk.GetValuesForKey(otherChunkPosition))
                         {
+                            if (chunk.SequenceNumber == otherChunk.SequenceNumber) continue;
+
                             var otherColor = otherChunk.GetSharedComponent(ColorTypeHandle).Value;
                             var otherPositions =
                                 otherChunk.GetNativeArray(ref PositionTypeHandle).Reinterpret<float2>();
@@ -145,7 +155,8 @@ namespace DefaultNamespace
                                 otherPositions,
                                 velocities,
                                 Attraction[color][otherColor],
-                                overlapDir
+                                overlapDir,
+                                offset
                             );
                         }
                     }
@@ -227,14 +238,16 @@ namespace DefaultNamespace
                 NativeArray<float2> otherPositions,
                 NativeArray<float2> velocities,
                 float outerForce,
-                float2 overlapDir
+                float2 overlapDir,
+                float2 offset
             )
             {
-                foreach (var otherPosition in otherPositions)
+                for (var otherIndex = 0; otherIndex < otherPositions.Length; otherIndex++)
                 {
+                    var otherPosition = otherPositions[otherIndex] - offset;
                     for (var i = 0; i < positions.Length; i++)
                     {
-                        directions[i] = otherPosition - positions[i];
+                        directions[i] = positions[i] - otherPosition;
                     }
 
                     for (var i = 0; i < positions.Length; i++)

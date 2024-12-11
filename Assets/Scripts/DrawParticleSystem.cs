@@ -12,7 +12,7 @@ namespace DefaultNamespace
     [UpdateBefore(typeof(ParticleLifeSystem))]
     public partial struct DrawParticleSystem : ISystem
     {
-        private const int ImageSize = 1024;
+        private const int ImageSize = 512;
         private NativeArray<uint> _image;
 
         private int _chunkCounter;
