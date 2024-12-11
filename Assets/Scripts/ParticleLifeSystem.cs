@@ -46,8 +46,6 @@ namespace DefaultNamespace
             var positionTypeHandle = SystemAPI.GetComponentTypeHandle<ParticlePosition>();
             var velocityTypeHandle = SystemAPI.GetComponentTypeHandle<ParticleVelocity>();
             var colorTypeHandle = SystemAPI.GetSharedComponentTypeHandle<ParticleColor>();
-            var minDistance = Constants.MinDistance;
-            var maxDistance = Constants.ChunkSize - 1;
             var mapSize = new uint2((uint)Constants.MapSize - 1, (uint)Constants.MapSize - 1);
             var maxSize = Constants.MaxSize;
 
@@ -59,8 +57,6 @@ namespace DefaultNamespace
                 ColorTypeHandle = colorTypeHandle,
                 ChunkPosToChunk = chunkPosToChunk,
 
-                MinDistance = minDistance,
-                MaxDistance = maxDistance,
                 InnerForce = Constants.MaxForce * 2,
                 Attraction = attraction,
             }.ScheduleParallel(particleQuery, state.Dependency);
@@ -96,7 +92,6 @@ namespace DefaultNamespace
             [NativeDisableContainerSafetyRestriction]
             public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
 
-            public float MinDistance, MaxDistance;
             public float InnerForce;
             public float4x4 Attraction;
 
@@ -119,10 +114,30 @@ namespace DefaultNamespace
                 var multiplier = new NativeArray<float>(positions.Length, Allocator.Temp);
 
                 UpdateInner(distances, directions, multiplier, positions, velocities, Attraction[color][color]);
-                for (var dy = -1; dy <= 1; dy++)
+
+                var delta = (int)math.ceil(Constants.MaxDistance / Constants.ChunkSize);
+
+                for (var dy = -delta; dy <= delta; dy++)
                 {
-                    for (var dx = -1; dx <= 1; dx++)
+                    for (var dx = -delta; dx <= delta; dx++)
                     {
+                        var distance = 0f;
+                        if (dy != 0)
+                        {
+                            var val = (math.abs(dy) - 1);
+                            distance += val * val;
+                        }
+
+                        if (dx != 0)
+                        {
+                            var val = (math.abs(dx) - 1);
+                            distance += val * val;
+                        }
+
+                        // If the closest courner is outside the max distance we can just skip it.
+                        // TODO: Consider precalculating bounds of all chunks
+                        if (distance > Constants.MaxDistance * Constants.MaxDistance) continue;
+
                         var otherChunkPosition = chunkPosition + new int2(dx, dy);
                         var offset = float2.zero;
                         for (var i = 0; i < 2; i++)
@@ -191,7 +206,7 @@ namespace DefaultNamespace
 
                     for (var j = 0; j < i; j++)
                     {
-                        multiplier[j] = (distances[j] < MinDistance ? 0 : 1);
+                        multiplier[j] = (distances[j] < Constants.MinDistance ? 0 : 1);
                     }
 
                     var velocityChange = float2.zero;
@@ -207,12 +222,18 @@ namespace DefaultNamespace
 
                     for (var j = 0; j < i; j++)
                     {
-                        multiplier[j] *= (distances[j] > MaxDistance ? 0 : 1);
+                        multiplier[j] *= (distances[j] > Constants.MaxDistance ? 0 : 1);
                     }
 
                     for (var j = 0; j < i; j++)
                     {
-                        distances[j] = math.remap(MinDistance, MaxDistance, outerForce, 0, distances[j]) *
+                        distances[j] = math.remap(
+                                           Constants.MinDistance,
+                                           Constants.MaxDistance,
+                                           outerForce,
+                                           0,
+                                           distances[j]
+                                       ) *
                                        multiplier[j];
                     }
 
@@ -262,7 +283,7 @@ namespace DefaultNamespace
 
                     for (var i = 0; i < positions.Length; i++)
                     {
-                        multiplier[i] = (distances[i] < MinDistance ? 0 : 1);
+                        multiplier[i] = (distances[i] < Constants.MinDistance ? 0 : 1);
                     }
 
                     for (var i = 0; i < positions.Length; i++)
@@ -272,12 +293,12 @@ namespace DefaultNamespace
 
                     for (var i = 0; i < positions.Length; i++)
                     {
-                        multiplier[i] *= (distances[i] > MaxDistance ? 0 : 1);
+                        multiplier[i] *= (distances[i] > Constants.MaxDistance ? 0 : 1);
                     }
 
                     for (var i = 0; i < positions.Length; i++)
                     {
-                        distances[i] = math.unlerp(MinDistance, MaxDistance, distances[i]);
+                        distances[i] = math.unlerp(Constants.MinDistance, Constants.MaxDistance, distances[i]);
                     }
 
                     for (var i = 0; i < positions.Length; i++)

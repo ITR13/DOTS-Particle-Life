@@ -10,7 +10,7 @@ namespace DefaultNamespace
     {
         private const int Colors = 4;
         private const int Repeats = 8 * Colors;
-        private const int TotalParticles = 1024;
+        private const int TotalParticles = 1024 * 4;
 
         private int _repeats;
         private EntityArchetype _archetype;
