@@ -45,13 +45,12 @@ namespace DefaultNamespace
                     );
                 }
 
-                var zoomMinOffset = Constants.ImageSize - Constants.ImageSize / singleton.ZoomAmount;
+                var zoomMinOffset = 1f / (singleton.ZoomAmount * 2);
+                var zoomMaxOffset = 1 - zoomMinOffset;
 
-                singleton.ZoomLocation = math.clamp(
-                    Constants.ImageSize * (normalizedMousePos - 0.5f / singleton.ZoomAmount),
-                    new float2(zoomMinOffset, zoomMinOffset),
-                    new float2(Constants.ImageSize - zoomMinOffset, Constants.ImageSize - zoomMinOffset)
-                );
+                normalizedMousePos = math.clamp(normalizedMousePos, new float2(zoomMinOffset, zoomMinOffset), new float2(zoomMaxOffset, zoomMaxOffset) );
+
+                singleton.ZoomLocation = Constants.ImageSize * (normalizedMousePos - 0.5f / singleton.ZoomAmount);
             }
             else if (Input.GetMouseButtonUp(0))
             {
