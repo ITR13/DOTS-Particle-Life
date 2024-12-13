@@ -10,7 +10,7 @@ namespace DefaultNamespace
     {
         private const int Colors = 4;
         private const int Repeats = 8 * Colors;
-        private const int TotalParticles = 1024 * 4;
+        private const int TotalParticles = 512;
 
         private int _repeats;
         private EntityArchetype _archetype;
@@ -36,7 +36,7 @@ namespace DefaultNamespace
             state.Enabled = --_repeats > 0;
             if (!state.Enabled)
             {
-                var maxAttraction = new float4(1, 1, 1, 1) * Constants.MaxForce;
+                var maxAttraction = new float4(1, 1, 1, 1) * Constants.Force;
 
                 var attraction =
                     new ParticleAttraction
@@ -46,7 +46,7 @@ namespace DefaultNamespace
                             _random.NextFloat4(-maxAttraction, maxAttraction),
                             _random.NextFloat4(-maxAttraction, maxAttraction),
                             _random.NextFloat4(-maxAttraction, maxAttraction)
-                        ),
+                        ) / Constants.Force,
                     };
                 
                 state.EntityManager.CreateSingleton(attraction);

@@ -62,7 +62,7 @@ namespace DefaultNamespace
 
         private void RandomizeAttraction()
         {
-            var maxAttraction = new float4(1, 1, 1, 1) * Constants.MaxForce;
+            var maxAttraction = new float4(1, 1, 1, 1);
             var attraction = new ParticleAttraction
             {
                 Value = new float4x4(

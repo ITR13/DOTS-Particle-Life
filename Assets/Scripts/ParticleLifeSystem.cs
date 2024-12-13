@@ -5,11 +5,15 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Profiling;
+using UnityEngine;
 
 namespace DefaultNamespace
 {
     public partial struct ParticleLifeSystem : ISystem
     {
+        private int _frame;
+
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<ParticleAttraction>();
@@ -19,7 +23,15 @@ namespace DefaultNamespace
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
+            _frame++;
+            if (_frame is 600)
+            {
+                Debug.Break();
+            }
+
+
             state.CompleteDependency();
+            state.Dependency = new DragJob().ScheduleParallel(state.Dependency);
 
             var attraction = SystemAPI.GetSingleton<ParticleAttraction>().Value;
 
@@ -46,7 +58,6 @@ namespace DefaultNamespace
             var positionTypeHandle = SystemAPI.GetComponentTypeHandle<ParticlePosition>();
             var velocityTypeHandle = SystemAPI.GetComponentTypeHandle<ParticleVelocity>();
             var colorTypeHandle = SystemAPI.GetSharedComponentTypeHandle<ParticleColor>();
-            var mapSize = new uint2((uint)Constants.MapSize - 1, (uint)Constants.MapSize - 1);
             var maxSize = Constants.MaxSize;
 
             state.Dependency = new AttractParticles
@@ -57,12 +68,12 @@ namespace DefaultNamespace
                 ColorTypeHandle = colorTypeHandle,
                 ChunkPosToChunk = chunkPosToChunk,
 
-                InnerForce = Constants.MaxForce * 2,
                 Attraction = attraction,
             }.ScheduleParallel(particleQuery, state.Dependency);
 
+            if (_frame >= 600) return;
+
             // TODO: Convert these jobs into a single job
-            state.Dependency = new DragJob().ScheduleParallel(state.Dependency);
             state.Dependency = new MoveJob().ScheduleParallel(state.Dependency);
             state.Dependency = new LoopJob { MaxSize = maxSize }.ScheduleParallel(state.Dependency);
 
@@ -83,6 +94,8 @@ namespace DefaultNamespace
         [BurstCompile]
         private struct AttractParticles : IJobChunk
         {
+            static readonly ProfilerMarker DrawParticleMarker = new ProfilerMarker("AttractParticles");
+
             [ReadOnly] public NativeParallelMultiHashMap<int2, ArchetypeChunk> ChunkPosToChunk;
 
             [ReadOnly] public ComponentTypeHandle<ParticlePosition> PositionTypeHandle;
@@ -92,7 +105,6 @@ namespace DefaultNamespace
             [NativeDisableContainerSafetyRestriction]
             public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
 
-            public float InnerForce;
             public float4x4 Attraction;
 
             public void Execute(
@@ -102,6 +114,8 @@ namespace DefaultNamespace
                 in v128 chunkEnabledMask
             )
             {
+                DrawParticleMarker.Begin();
+
                 Assert.IsFalse(useEnabledMask);
                 var positions = chunk.GetNativeArray(ref PositionTypeHandle).Reinterpret<float2>();
                 var velocities = chunk.GetNativeArray(ref VelocityTypeHandle).Reinterpret<float2>();
@@ -109,11 +123,12 @@ namespace DefaultNamespace
                 var color = chunk.GetSharedComponent(ColorTypeHandle).Value;
                 var chunkPosition = chunk.GetSharedComponent(ChunkPositionTypeHandle).Value;
 
-                var distances = new NativeArray<float>(positions.Length, Allocator.Temp);
-                var directions = new NativeArray<float2>(positions.Length, Allocator.Temp);
-                var multiplier = new NativeArray<float>(positions.Length, Allocator.Temp);
+                var length = positions.Length + (4 - positions.Length % 4) % 4;
+                var distances = new NativeArray<float>(length, Allocator.Temp);
+                var temp = new NativeArray<float>(length, Allocator.Temp);
+                var directions = new NativeArray<float2>(length, Allocator.Temp);
 
-                UpdateInner(distances, directions, multiplier, positions, velocities, Attraction[color][color]);
+                UpdateInner(distances, temp, directions, positions, velocities, Attraction[color][color]);
 
                 var delta = (int)math.ceil(Constants.MaxDistance / Constants.ChunkSize);
 
@@ -165,8 +180,8 @@ namespace DefaultNamespace
                             var overlapDir = new float2(math.sign(chunk.SequenceNumber - otherChunk.SequenceNumber), 0);
                             UpdateOuter(
                                 distances,
+                                temp,
                                 directions,
-                                multiplier,
                                 positions,
                                 otherPositions,
                                 velocities,
@@ -177,12 +192,14 @@ namespace DefaultNamespace
                         }
                     }
                 }
+
+                DrawParticleMarker.End();
             }
 
             private void UpdateInner(
                 NativeArray<float> distances,
+                NativeArray<float> temp,
                 NativeArray<float2> directions,
-                NativeArray<float> multiplier,
                 NativeArray<float2> positions,
                 NativeArray<float2> velocities,
                 float outerForce
@@ -202,50 +219,56 @@ namespace DefaultNamespace
 
                     for (var j = 0; j < i; j++)
                     {
-                        directions[j] = (distances[j] > 0 ? directions[j] / distances[j] : new float2(1, 0));
+                        directions[j] = math.select(new float2(1, 0), directions[j] / distances[j], distances[j] > 0);
                     }
 
                     for (var j = 0; j < i; j++)
                     {
-                        multiplier[j] = (distances[j] < Constants.MinDistance ? 0 : 1);
+                        temp[j] = outerForce *
+                                  (
+                                      1 -
+                                      math.abs(2 * distances[j] - 1 - Constants.ForceBeta) / (1 - Constants.ForceBeta)
+                                  );
+                    }
+
+                    for (var j = 0; j < i; j++)
+                    {
+                        temp[j] = math.select(0, temp[j], distances[j] < 1);
+                    }
+
+                    for (var j = 0; j < i; j++)
+                    {
+                        distances[j] = distances[j] / Constants.ForceBeta - 1;
+                    }
+
+                    for (var j = 0; j < i; j++)
+                    {
+                        distances[j] = math.select(
+                            temp[j],
+                            distances[j],
+                            distances[j] < Constants.ForceBeta
+                        );
+                    }
+
+                    for (var j = 0; j < i; j++)
+                    {
+                        distances[j] = distances[j] * Constants.Force * Constants.MaxDistance;
+                    }
+
+                    for (var j = 0; j < i; j++)
+                    {
+                        directions[j] *= distances[j];
                     }
 
                     var velocityChange = float2.zero;
                     for (var j = 0; j < i; j++)
                     {
-                        velocityChange += (1 - multiplier[j]) * InnerForce * directions[j];
+                        velocityChange += directions[j];
                     }
 
                     for (var j = 0; j < i; j++)
                     {
-                        velocities[j] += (1 - multiplier[j]) * -InnerForce * directions[j];
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
-                        multiplier[j] *= (distances[j] > Constants.MaxDistance ? 0 : 1);
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
-                        distances[j] = math.remap(
-                                           Constants.MinDistance,
-                                           Constants.MaxDistance,
-                                           outerForce,
-                                           0,
-                                           distances[j]
-                                       ) *
-                                       multiplier[j];
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
-                        velocityChange += distances[j] * directions[j];
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
-                        velocities[j] -= distances[j] * directions[j];
+                        velocities[j] -= directions[j];
                     }
 
                     velocities[i] += velocityChange;
@@ -254,8 +277,8 @@ namespace DefaultNamespace
 
             private void UpdateOuter(
                 NativeArray<float> distances,
+                NativeArray<float> temp,
                 NativeArray<float2> directions,
-                NativeArray<float> multiplier,
                 NativeArray<float2> positions,
                 NativeArray<float2> otherPositions,
                 NativeArray<float2> velocities,
@@ -264,6 +287,9 @@ namespace DefaultNamespace
                 float2 offset
             )
             {
+                var distances4 = distances.Reinterpret<float4>(4);
+                var temp4 = distances.Reinterpret<float4>(4);
+
                 for (var otherIndex = 0; otherIndex < otherPositions.Length; otherIndex++)
                 {
                     var otherPosition = otherPositions[otherIndex] - offset;
@@ -279,32 +305,42 @@ namespace DefaultNamespace
 
                     for (var i = 0; i < positions.Length; i++)
                     {
-                        directions[i] = (distances[i] > 0 ? directions[i] / distances[i] : overlapDir);
+                        directions[i] = math.select(overlapDir, directions[i] / distances[i], distances[i] > 0);
+                    }
+
+                    for (var i = 0; i < distances4.Length; i++)
+                    {
+                        var val = outerForce *
+                                  (
+                                      1 -
+                                      math.abs(2 * distances4[i] - 1 - Constants.ForceBeta) / (1 - Constants.ForceBeta)
+                                  );
+
+                        temp4[i] = math.select(0, val, distances4[i] < 1);
+                    }
+
+                    for (var i = 0; i < distances4.Length; i++)
+                    {
+                        distances4[i] = math.select(
+                            temp4[i],
+                            distances4[i] / Constants.ForceBeta - 1,
+                            distances4[i] < Constants.ForceBeta
+                        );
+                    }
+
+                    for (var i = 0; i < distances4.Length; i++)
+                    {
+                        distances4[i] *= Constants.Force * Constants.MaxDistance;
                     }
 
                     for (var i = 0; i < positions.Length; i++)
                     {
-                        multiplier[i] = (distances[i] < Constants.MinDistance ? 0 : 1);
+                        directions[i] *= distances[i];
                     }
 
                     for (var i = 0; i < positions.Length; i++)
                     {
-                        velocities[i] += (1 - multiplier[i]) * InnerForce * directions[i];
-                    }
-
-                    for (var i = 0; i < positions.Length; i++)
-                    {
-                        multiplier[i] *= (distances[i] > Constants.MaxDistance ? 0 : 1);
-                    }
-
-                    for (var i = 0; i < positions.Length; i++)
-                    {
-                        distances[i] = math.unlerp(Constants.MinDistance, Constants.MaxDistance, distances[i]);
-                    }
-
-                    for (var i = 0; i < positions.Length; i++)
-                    {
-                        velocities[i] += multiplier[i] * math.lerp(outerForce, 0, distances[i]) * directions[i];
+                        velocities[i] -= directions[i];
                     }
                 }
             }
