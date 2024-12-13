@@ -91,7 +91,7 @@ namespace DefaultNamespace
             }.ScheduleParallel(query, state.Dependency);
         }
 
-        [BurstCompile]
+        [BurstCompile(FloatPrecision.Low, FloatMode.Fast, OptimizeFor = OptimizeFor.FastCompilation)]
         private struct AttractParticles : IJobChunk
         {
             static readonly ProfilerMarker DrawParticleMarker = new ProfilerMarker("AttractParticles");
@@ -123,12 +123,10 @@ namespace DefaultNamespace
                 var color = chunk.GetSharedComponent(ColorTypeHandle).Value;
                 var chunkPosition = chunk.GetSharedComponent(ChunkPositionTypeHandle).Value;
 
-                var length = positions.Length + (4 - positions.Length % 4) % 4;
-                var distances = new NativeArray<float>(length, Allocator.Temp);
-                var temp = new NativeArray<float>(length, Allocator.Temp);
-                var directions = new NativeArray<float2>(length, Allocator.Temp);
+                var distances = new NativeArray<float>(positions.Length, Allocator.Temp);
+                var directions = new NativeArray<float2>(positions.Length, Allocator.Temp);
 
-                UpdateInner(distances, temp, directions, positions, velocities, Attraction[color][color]);
+                UpdateInner(distances, directions, positions, velocities, Attraction[color][color]);
 
                 var delta = (int)math.ceil(Constants.MaxDistance / Constants.ChunkSize);
 
@@ -180,7 +178,6 @@ namespace DefaultNamespace
                             var overlapDir = new float2(math.sign(chunk.SequenceNumber - otherChunk.SequenceNumber), 0);
                             UpdateOuter(
                                 distances,
-                                temp,
                                 directions,
                                 positions,
                                 otherPositions,
@@ -198,7 +195,6 @@ namespace DefaultNamespace
 
             private void UpdateInner(
                 NativeArray<float> distances,
-                NativeArray<float> temp,
                 NativeArray<float2> directions,
                 NativeArray<float2> positions,
                 NativeArray<float2> velocities,
@@ -224,30 +220,19 @@ namespace DefaultNamespace
 
                     for (var j = 0; j < i; j++)
                     {
-                        temp[j] = outerForce *
-                                  (
-                                      1 -
-                                      math.abs(2 * distances[j] - 1 - Constants.ForceBeta) / (1 - Constants.ForceBeta)
-                                  );
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
-                        temp[j] = math.select(0, temp[j], distances[j] < 1);
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
-                        distances[j] = distances[j] / Constants.ForceBeta - 1;
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
-                        distances[j] = math.select(
-                            temp[j],
-                            distances[j],
-                            distances[j] < Constants.ForceBeta
-                        );
+                        switch (distances[j])
+                        {
+                            case < Constants.ForceBeta:
+                                distances[j] = distances[j] / Constants.ForceBeta - 1;
+                                break;
+                            case < 1:
+                                var abs = math.abs(2 * distances[j] - 1 - Constants.ForceBeta);
+                                distances[j] = outerForce * (1 - abs / (1 - Constants.ForceBeta));
+                                break;
+                            default:
+                                distances[j] = 0;
+                                break;
+                        }
                     }
 
                     for (var j = 0; j < i; j++)
@@ -277,7 +262,6 @@ namespace DefaultNamespace
 
             private void UpdateOuter(
                 NativeArray<float> distances,
-                NativeArray<float> temp,
                 NativeArray<float2> directions,
                 NativeArray<float2> positions,
                 NativeArray<float2> otherPositions,
@@ -287,58 +271,52 @@ namespace DefaultNamespace
                 float2 offset
             )
             {
-                var distances4 = distances.Reinterpret<float4>(4);
-                var temp4 = distances.Reinterpret<float4>(4);
-
                 for (var otherIndex = 0; otherIndex < otherPositions.Length; otherIndex++)
                 {
                     var otherPosition = otherPositions[otherIndex] - offset;
-                    for (var i = 0; i < positions.Length; i++)
+                    for (var i = 0; i < distances.Length; i++)
                     {
                         directions[i] = positions[i] - otherPosition;
                     }
 
-                    for (var i = 0; i < positions.Length; i++)
+                    for (var i = 0; i < distances.Length; i++)
                     {
                         distances[i] = math.length(directions[i]);
                     }
 
-                    for (var i = 0; i < positions.Length; i++)
+                    for (var i = 0; i < distances.Length; i++)
                     {
                         directions[i] = math.select(overlapDir, directions[i] / distances[i], distances[i] > 0);
                     }
 
-                    for (var i = 0; i < distances4.Length; i++)
+                    for (var i = 0; i < distances.Length; i++)
                     {
-                        var val = outerForce *
-                                  (
-                                      1 -
-                                      math.abs(2 * distances4[i] - 1 - Constants.ForceBeta) / (1 - Constants.ForceBeta)
-                                  );
-
-                        temp4[i] = math.select(0, val, distances4[i] < 1);
+                        switch (distances[i])
+                        {
+                            case < Constants.ForceBeta:
+                                distances[i] = distances[i] / Constants.ForceBeta - 1;
+                                break;
+                            case < 1:
+                                var abs = math.abs(2 * distances[i] - 1 - Constants.ForceBeta);
+                                distances[i] = outerForce * (1 - abs / (1 - Constants.ForceBeta));
+                                break;
+                            default:
+                                distances[i] = 0;
+                                break;
+                        }
                     }
 
-                    for (var i = 0; i < distances4.Length; i++)
+                    for (var i = 0; i < distances.Length; i++)
                     {
-                        distances4[i] = math.select(
-                            temp4[i],
-                            distances4[i] / Constants.ForceBeta - 1,
-                            distances4[i] < Constants.ForceBeta
-                        );
+                        distances[i] *= Constants.Force * Constants.MaxDistance;
                     }
 
-                    for (var i = 0; i < distances4.Length; i++)
-                    {
-                        distances4[i] *= Constants.Force * Constants.MaxDistance;
-                    }
-
-                    for (var i = 0; i < positions.Length; i++)
+                    for (var i = 0; i < distances.Length; i++)
                     {
                         directions[i] *= distances[i];
                     }
 
-                    for (var i = 0; i < positions.Length; i++)
+                    for (var i = 0; i < distances.Length; i++)
                     {
                         velocities[i] -= directions[i];
                     }
