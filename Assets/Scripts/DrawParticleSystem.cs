@@ -12,6 +12,7 @@ namespace DefaultNamespace
     [UpdateBefore(typeof(ParticleLifeSystem))]
     public partial struct DrawParticleSystem : ISystem
     {
+        private NativeArray<uint> _colors;
         private NativeArray<uint> _image;
 
         private int _chunkCounter;
@@ -28,6 +29,24 @@ namespace DefaultNamespace
                 }
             );
             state.RequireForUpdate<ParticleImage>();
+
+            _colors = new NativeArray<uint>(16, Allocator.Domain);
+            _colors[0] = 0xFF4F2F2F;
+            _colors[1] = 0xFF8B4513;
+            _colors[2] = 0xFF13458B;
+            _colors[3] = 0xFF006400;
+            _colors[4] = 0xFF004000;
+            _colors[5] = 0xFF76B6BD;
+            _colors[6] = 0xFF7F007F;
+            _colors[7] = 0xFFFF0000;
+            _colors[8] = 0xFF00A5FF;
+            _colors[9] = 0xFF00FFFF;
+            _colors[10] = 0xFF00FF00;
+            _colors[11] = 0xFFFA9A00;
+            _colors[12] = 0xFF0000CD;
+            _colors[13] = 0xFFCD0000;
+            _colors[14] = 0xFFFF00FF;
+            _colors[15] = 0xFF7093DB;
         }
 
         [BurstCompile]
@@ -68,6 +87,7 @@ namespace DefaultNamespace
                 ColorTypeHandle = colorTypeHandle,
                 PositionTypeHandle = positionTypeHandle,
                 Image = image,
+                ValidColors = _colors,
 
                 ZoomAmount = particleImage.ZoomAmount,
                 Offset = particleImage.ZoomLocation,
@@ -91,6 +111,7 @@ namespace DefaultNamespace
         {
             [ReadOnly] public SharedComponentTypeHandle<ParticleColor> ColorTypeHandle;
             [ReadOnly] public ComponentTypeHandle<ParticlePosition> PositionTypeHandle;
+            [ReadOnly] public NativeArray<uint> ValidColors;
 
             [NativeDisableContainerSafetyRestriction]
             public NativeArray<uint> Image;
@@ -110,7 +131,7 @@ namespace DefaultNamespace
                 var color = chunk.GetSharedComponent(ColorTypeHandle).Value;
                 var positions = chunk.GetNativeArray(ref PositionTypeHandle);
 
-                var colorInt = color < 3 ? (uint)(0xFF << (color * 8)) | 0xFF000000 : 0xFFFFFFFF;
+                var colorInt = ValidColors[color % ValidColors.Length];
 
                 for (var i = 0; i < positions.Length; i++)
                 {
@@ -128,6 +149,7 @@ namespace DefaultNamespace
         public void OnDestroy(ref SystemState state)
         {
             _image.Dispose();
+            _colors.Dispose();
         }
     }
 }

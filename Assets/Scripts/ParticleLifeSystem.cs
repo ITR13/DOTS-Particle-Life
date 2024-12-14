@@ -89,7 +89,7 @@ namespace DefaultNamespace
             [NativeDisableContainerSafetyRestriction]
             public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
 
-            public float4x4 Attraction;
+            [ReadOnly] public NativeArray<half> Attraction;
 
             public void Execute(
                 in ArchetypeChunk chunk,
@@ -109,7 +109,7 @@ namespace DefaultNamespace
                 var directions = new NativeArray<float2>(positions.Length, Allocator.Temp);
 
                 UpdateDrag(velocities);
-                UpdateInner(distances, directions, positions, velocities, Attraction[color][color]);
+                UpdateInner(distances, directions, positions, velocities, Attraction[color * Constants.Colors + color]);
 
                 var delta = (int)math.ceil(Constants.MaxDistance / Constants.ChunkSize);
 
@@ -165,7 +165,7 @@ namespace DefaultNamespace
                                 positions,
                                 otherPositions,
                                 velocities,
-                                Attraction[color][otherColor],
+                                Attraction[color * Constants.Colors + otherColor],
                                 overlapDir,
                                 offset
                             );

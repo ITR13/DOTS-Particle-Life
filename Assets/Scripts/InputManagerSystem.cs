@@ -29,11 +29,12 @@ namespace DefaultNamespace
                 {
                     singleton.ZoomAmount *= 2;
                 }
+
                 if (Input.GetKey(KeyCode.LeftControl))
                 {
                     singleton.ZoomAmount *= 4;
                 }
-                
+
                 var mousePos = Input.mousePosition;
 
                 float2 normalizedMousePos;
@@ -57,7 +58,11 @@ namespace DefaultNamespace
                 var zoomMinOffset = 1f / (singleton.ZoomAmount * 2);
                 var zoomMaxOffset = 1 - zoomMinOffset;
 
-                normalizedMousePos = math.clamp(normalizedMousePos, new float2(zoomMinOffset, zoomMinOffset), new float2(zoomMaxOffset, zoomMaxOffset) );
+                normalizedMousePos = math.clamp(
+                    normalizedMousePos,
+                    new float2(zoomMinOffset, zoomMinOffset),
+                    new float2(zoomMaxOffset, zoomMaxOffset)
+                );
 
                 singleton.ZoomLocation = Constants.ImageSize * (normalizedMousePos - 0.5f / singleton.ZoomAmount);
             }
@@ -71,18 +76,11 @@ namespace DefaultNamespace
 
         private void RandomizeAttraction()
         {
-            var maxAttraction = new float4(1, 1, 1, 1);
-            var attraction = new ParticleAttraction
+            ref var particleAttraction = ref SystemAPI.GetSingletonRW<ParticleAttraction>().ValueRW;
+            for (var i = 0; i < Constants.Colors * Constants.Colors; i++)
             {
-                Value = new float4x4(
-                    _random.NextFloat4(-maxAttraction, maxAttraction),
-                    _random.NextFloat4(-maxAttraction, maxAttraction),
-                    _random.NextFloat4(-maxAttraction, maxAttraction),
-                    _random.NextFloat4(-maxAttraction, maxAttraction)
-                ),
-            };
-
-            SystemAPI.SetSingleton(attraction);
+                particleAttraction.Value[i] = (half)_random.NextFloat(-1, 1);
+            }
         }
     }
 }

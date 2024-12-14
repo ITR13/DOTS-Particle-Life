@@ -8,8 +8,7 @@ namespace DefaultNamespace
     [UpdateInGroup(typeof(InitializationSystemGroup))]
     public partial struct InitializeWorldSystem : ISystem
     {
-        private const int Colors = 4;
-        private const int Repeats = 8 * Colors;
+        private const int Repeats = 8 * Constants.Colors;
         private const int ParticlesPerRepeat = 512;
         public const int TotalParticles = Repeats * ParticlesPerRepeat;
 
@@ -27,7 +26,6 @@ namespace DefaultNamespace
             types[2] = ComponentType.ReadOnly<ParticleChunk>();
             types[3] = ComponentType.ReadOnly<ParticleColor>();
             _archetype = state.EntityManager.CreateArchetype(types);
-
             _random = new Random(421337);
         }
 
@@ -37,27 +35,23 @@ namespace DefaultNamespace
             state.Enabled = --_repeats > 0;
             if (!state.Enabled)
             {
-                var maxAttraction = new float4(1, 1, 1, 1);
+                var particleAttraction = new ParticleAttraction
+                {
+                    Value = new NativeArray<half>(Constants.Colors * Constants.Colors, Allocator.Domain),
+                };
+                for (var i = 0; i < Constants.Colors * Constants.Colors; i++)
+                {
+                    particleAttraction.Value[i] = (half)_random.NextFloat(-1, 1);
+                }
 
-                var attraction =
-                    new ParticleAttraction
-                    {
-                        Value = new float4x4(
-                            _random.NextFloat4(-maxAttraction, maxAttraction),
-                            _random.NextFloat4(-maxAttraction, maxAttraction),
-                            _random.NextFloat4(-maxAttraction, maxAttraction),
-                            _random.NextFloat4(-maxAttraction, maxAttraction)
-                        ),
-                    };
-                
-                state.EntityManager.CreateSingleton(attraction);
+                state.EntityManager.CreateSingleton(particleAttraction);
             }
-            
+
             var entities = state.EntityManager.CreateEntity(_archetype, ParticlesPerRepeat, Allocator.Temp);
 
             var maxSize = Constants.MaxSize;
 
-            var color = (byte)(_repeats % Colors);
+            var color = (byte)(_repeats % Constants.Colors);
             state.EntityManager.SetSharedComponent(entities, new ParticleColor { Value = color });
 
             foreach (var entity in entities)
@@ -70,6 +64,12 @@ namespace DefaultNamespace
                 var chunk = Constants.PosToChunk(r.xy);
                 state.EntityManager.SetSharedComponent(entity, new ParticleChunk { Value = chunk });
             }
+        }
+
+        public void OnDestroy(ref SystemState state)
+        {
+            if (SystemAPI.TryGetSingleton<ParticleAttraction>(out var particleAttraction))
+                particleAttraction.Value.Dispose();
         }
     }
 }
