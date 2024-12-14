@@ -57,7 +57,9 @@ namespace DefaultNamespace
                 ChunkPosToChunk = chunkPosToChunk,
 
                 Attraction = attraction.Value,
+#if DRAG_VARIANCE
                 DefaultDrag = attraction.DefaultDrag,
+#endif
             }.ScheduleParallel(particleQuery, state.Dependency);
 
             var entityTypeHandle = SystemAPI.GetEntityTypeHandle();
@@ -91,7 +93,9 @@ namespace DefaultNamespace
             public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
 
             [ReadOnly] public NativeArray<half> Attraction;
+#if DRAG_VARIANCE
             [ReadOnly] public NativeArray<float2> DefaultDrag;
+#endif
 
             public void Execute(
                 in ArchetypeChunk chunk,
@@ -110,7 +114,11 @@ namespace DefaultNamespace
                 var distances = new NativeArray<float>(positions.Length, Allocator.Temp);
                 var directions = new NativeArray<float2>(positions.Length, Allocator.Temp);
 
+#if DRAG_VARIANCE
                 UpdateDrag(velocities, DefaultDrag[color]);
+#else
+                UpdateDrag(velocities);
+#endif
                 UpdateInner(distances, directions, positions, velocities, Attraction[color * Constants.Colors + color]);
 
                 var delta = (int)math.ceil(Constants.MaxDistance / Constants.ChunkSize);
@@ -176,6 +184,7 @@ namespace DefaultNamespace
                 }
             }
 
+#if DRAG_VARIANCE
             private void UpdateDrag(NativeArray<float2> velocities, float2 defaultDrag)
             {
                 for (var i = 0; i < velocities.Length; i++)
@@ -183,6 +192,15 @@ namespace DefaultNamespace
                     velocities[i] = defaultDrag + (velocities[i] - defaultDrag) * Constants.Drag;
                 }
             }
+#else
+            private void UpdateDrag(NativeArray<float2> velocities)
+            {
+                for (var i = 0; i < velocities.Length; i++)
+                {
+                    velocities[i] *= Constants.Drag;
+                }
+            }
+#endif
 
             private void UpdateInner(
                 NativeArray<float> distances,

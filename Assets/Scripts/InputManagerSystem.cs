@@ -83,12 +83,14 @@ namespace DefaultNamespace
             {
                 particleAttraction.Value[i] = (half)_random.NextFloat(-1, 1);
             }
-            
+
+#if DRAG_VARIANCE
             var maxDrag = new float2(Constants.DragVariance, Constants.DragVariance);
             for (var i = 0; i < Constants.Colors; i++)
             {
                 particleAttraction.DefaultDrag[i] = _random.NextFloat2(-maxDrag, maxDrag);
             }
+#endif
         }
 
         private void ToggleVis(ref SystemState state)

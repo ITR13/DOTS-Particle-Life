@@ -7,7 +7,9 @@ namespace DefaultNamespace
     public struct ParticleAttraction : IComponentData
     {
         public NativeArray<half> Value;
+#if DRAG_VARIANCE
         public NativeArray<float2> DefaultDrag;
+#endif
     }
 
     public struct ParticleImage : IComponentData

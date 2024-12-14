@@ -38,18 +38,22 @@ namespace DefaultNamespace
                 var particleAttraction = new ParticleAttraction
                 {
                     Value = new NativeArray<half>(Constants.Colors * Constants.Colors, Allocator.Domain),
+#if DRAG_VARIANCE
                     DefaultDrag = new NativeArray<float2>(Constants.Colors, Allocator.Domain),
+#endif
                 };
                 for (var i = 0; i < Constants.Colors * Constants.Colors; i++)
                 {
                     particleAttraction.Value[i] = (half)_random.NextFloat(-1, 1);
                 }
 
+#if DRAG_VARIANCE
                 var maxDrag = new float2(Constants.DragVariance, Constants.DragVariance);
                 for (var i = 0; i < Constants.Colors; i++)
                 {
                     particleAttraction.DefaultDrag[i] = _random.NextFloat2(-maxDrag, maxDrag);
                 }
+#endif
 
                 state.EntityManager.CreateSingleton(particleAttraction);
             }
@@ -59,6 +63,7 @@ namespace DefaultNamespace
             var maxSize = Constants.MaxSize;
 
             var color = (byte)(_repeats % Constants.Colors);
+
             state.EntityManager.SetSharedComponent(entities, new ParticleColor { Value = color });
 
             foreach (var entity in entities)
@@ -78,7 +83,9 @@ namespace DefaultNamespace
             if (SystemAPI.TryGetSingleton<ParticleAttraction>(out var particleAttraction))
             {
                 particleAttraction.Value.Dispose();
+#if DRAG_VARIANCE
                 particleAttraction.DefaultDrag.Dispose();
+#endif
             }
         }
     }
