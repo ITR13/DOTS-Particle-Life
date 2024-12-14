@@ -14,7 +14,7 @@ namespace DefaultNamespace
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            _random = new Random(421337);
+            _random = new Random(1337);
         }
 
         [BurstCompile]
@@ -82,6 +82,12 @@ namespace DefaultNamespace
             for (var i = 0; i < Constants.Colors * Constants.Colors; i++)
             {
                 particleAttraction.Value[i] = (half)_random.NextFloat(-1, 1);
+            }
+            
+            var maxDrag = new float2(Constants.DragVariance, Constants.DragVariance);
+            for (var i = 0; i < Constants.Colors; i++)
+            {
+                particleAttraction.DefaultDrag[i] = _random.NextFloat2(-maxDrag, maxDrag);
             }
         }
 

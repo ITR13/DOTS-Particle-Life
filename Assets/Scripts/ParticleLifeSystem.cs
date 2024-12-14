@@ -21,7 +21,7 @@ namespace DefaultNamespace
         {
             state.CompleteDependency();
 
-            var attraction = SystemAPI.GetSingleton<ParticleAttraction>().Value;
+            var attraction = SystemAPI.GetSingleton<ParticleAttraction>();
 
             var particleQuery = SystemAPI.QueryBuilder()
                 .WithAllRW<ParticleVelocity>()
@@ -56,7 +56,8 @@ namespace DefaultNamespace
                 ColorTypeHandle = colorTypeHandle,
                 ChunkPosToChunk = chunkPosToChunk,
 
-                Attraction = attraction,
+                Attraction = attraction.Value,
+                DefaultDrag = attraction.DefaultDrag,
             }.ScheduleParallel(particleQuery, state.Dependency);
 
             var entityTypeHandle = SystemAPI.GetEntityTypeHandle();
@@ -90,6 +91,7 @@ namespace DefaultNamespace
             public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
 
             [ReadOnly] public NativeArray<half> Attraction;
+            [ReadOnly] public NativeArray<float2> DefaultDrag;
 
             public void Execute(
                 in ArchetypeChunk chunk,
@@ -108,7 +110,7 @@ namespace DefaultNamespace
                 var distances = new NativeArray<float>(positions.Length, Allocator.Temp);
                 var directions = new NativeArray<float2>(positions.Length, Allocator.Temp);
 
-                UpdateDrag(velocities);
+                UpdateDrag(velocities, DefaultDrag[color]);
                 UpdateInner(distances, directions, positions, velocities, Attraction[color * Constants.Colors + color]);
 
                 var delta = (int)math.ceil(Constants.MaxDistance / Constants.ChunkSize);
@@ -174,11 +176,11 @@ namespace DefaultNamespace
                 }
             }
 
-            private void UpdateDrag(NativeArray<float2> velocities)
+            private void UpdateDrag(NativeArray<float2> velocities, float2 defaultDrag)
             {
                 for (var i = 0; i < velocities.Length; i++)
                 {
-                    velocities[i] *= Constants.Drag;
+                    velocities[i] = defaultDrag + (velocities[i] - defaultDrag) * Constants.Drag;
                 }
             }
 

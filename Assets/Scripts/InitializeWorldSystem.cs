@@ -9,7 +9,7 @@ namespace DefaultNamespace
     public partial struct InitializeWorldSystem : ISystem
     {
         private const int Repeats = 8 * Constants.Colors;
-        private const int ParticlesPerRepeat = 512;
+        private const int ParticlesPerRepeat = 256;
         public const int TotalParticles = Repeats * ParticlesPerRepeat;
 
         private int _repeats;
@@ -26,7 +26,7 @@ namespace DefaultNamespace
             types[2] = ComponentType.ReadOnly<ParticleChunk>();
             types[3] = ComponentType.ReadOnly<ParticleColor>();
             _archetype = state.EntityManager.CreateArchetype(types);
-            _random = new Random(421337);
+            _random = new Random(1337);
         }
 
         [BurstCompile]
@@ -38,10 +38,17 @@ namespace DefaultNamespace
                 var particleAttraction = new ParticleAttraction
                 {
                     Value = new NativeArray<half>(Constants.Colors * Constants.Colors, Allocator.Domain),
+                    DefaultDrag = new NativeArray<float2>(Constants.Colors, Allocator.Domain),
                 };
                 for (var i = 0; i < Constants.Colors * Constants.Colors; i++)
                 {
                     particleAttraction.Value[i] = (half)_random.NextFloat(-1, 1);
+                }
+
+                var maxDrag = new float2(Constants.DragVariance, Constants.DragVariance);
+                for (var i = 0; i < Constants.Colors; i++)
+                {
+                    particleAttraction.DefaultDrag[i] = _random.NextFloat2(-maxDrag, maxDrag);
                 }
 
                 state.EntityManager.CreateSingleton(particleAttraction);
@@ -69,7 +76,10 @@ namespace DefaultNamespace
         public void OnDestroy(ref SystemState state)
         {
             if (SystemAPI.TryGetSingleton<ParticleAttraction>(out var particleAttraction))
+            {
                 particleAttraction.Value.Dispose();
+                particleAttraction.DefaultDrag.Dispose();
+            }
         }
     }
 }
