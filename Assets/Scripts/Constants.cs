@@ -11,7 +11,7 @@ namespace DefaultNamespace
         public const float Drag = 0.85f;
         public const int ImageSize = 1024;
 
-        public const float Force = 0.002f * 8 / MaxDistance;
+        public const float Force = 0.010f / MaxDistance;
         public static float2 MaxSize => new float2(ChunkSize * MapSize, ChunkSize * MapSize);
 
         public static int2 PosToChunk(float2 pos)

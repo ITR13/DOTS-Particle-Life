@@ -36,7 +36,7 @@ namespace DefaultNamespace
             state.Enabled = --_repeats > 0;
             if (!state.Enabled)
             {
-                var maxAttraction = new float4(1, 1, 1, 1) * Constants.Force;
+                var maxAttraction = new float4(1, 1, 1, 1);
 
                 var attraction =
                     new ParticleAttraction
@@ -46,7 +46,7 @@ namespace DefaultNamespace
                             _random.NextFloat4(-maxAttraction, maxAttraction),
                             _random.NextFloat4(-maxAttraction, maxAttraction),
                             _random.NextFloat4(-maxAttraction, maxAttraction)
-                        ) / Constants.Force,
+                        ),
                     };
                 
                 state.EntityManager.CreateSingleton(attraction);

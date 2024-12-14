@@ -5,15 +5,11 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Profiling;
-using UnityEngine;
 
 namespace DefaultNamespace
 {
     public partial struct ParticleLifeSystem : ISystem
     {
-        private int _frame;
-
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<ParticleAttraction>();
@@ -23,13 +19,6 @@ namespace DefaultNamespace
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            _frame++;
-            if (_frame is 600)
-            {
-                Debug.Break();
-            }
-
-
             state.CompleteDependency();
             state.Dependency = new DragJob().ScheduleParallel(state.Dependency);
 
@@ -71,8 +60,6 @@ namespace DefaultNamespace
                 Attraction = attraction,
             }.ScheduleParallel(particleQuery, state.Dependency);
 
-            if (_frame >= 600) return;
-
             // TODO: Convert these jobs into a single job
             state.Dependency = new MoveJob().ScheduleParallel(state.Dependency);
             state.Dependency = new LoopJob { MaxSize = maxSize }.ScheduleParallel(state.Dependency);
@@ -94,8 +81,6 @@ namespace DefaultNamespace
         [BurstCompile(FloatPrecision.Low, FloatMode.Fast, OptimizeFor = OptimizeFor.FastCompilation)]
         private struct AttractParticles : IJobChunk
         {
-            static readonly ProfilerMarker DrawParticleMarker = new ProfilerMarker("AttractParticles");
-
             [ReadOnly] public NativeParallelMultiHashMap<int2, ArchetypeChunk> ChunkPosToChunk;
 
             [ReadOnly] public ComponentTypeHandle<ParticlePosition> PositionTypeHandle;
@@ -114,8 +99,6 @@ namespace DefaultNamespace
                 in v128 chunkEnabledMask
             )
             {
-                DrawParticleMarker.Begin();
-
                 Assert.IsFalse(useEnabledMask);
                 var positions = chunk.GetNativeArray(ref PositionTypeHandle).Reinterpret<float2>();
                 var velocities = chunk.GetNativeArray(ref VelocityTypeHandle).Reinterpret<float2>();
@@ -189,8 +172,6 @@ namespace DefaultNamespace
                         }
                     }
                 }
-
-                DrawParticleMarker.End();
             }
 
             private void UpdateInner(
@@ -216,6 +197,11 @@ namespace DefaultNamespace
                     for (var j = 0; j < i; j++)
                     {
                         directions[j] = math.select(new float2(1, 0), directions[j] / distances[j], distances[j] > 0);
+                    }
+
+                    for (var j = 0; j < i; j++)
+                    {
+                        distances[j] /= Constants.MaxDistance;
                     }
 
                     for (var j = 0; j < i; j++)
@@ -253,10 +239,10 @@ namespace DefaultNamespace
 
                     for (var j = 0; j < i; j++)
                     {
-                        velocities[j] -= directions[j];
+                        velocities[j] += directions[j];
                     }
 
-                    velocities[i] += velocityChange;
+                    velocities[i] -= velocityChange;
                 }
             }
 
@@ -287,6 +273,11 @@ namespace DefaultNamespace
                     for (var i = 0; i < distances.Length; i++)
                     {
                         directions[i] = math.select(overlapDir, directions[i] / distances[i], distances[i] > 0);
+                    }
+
+                    for (var i = 0; i < distances.Length; i++)
+                    {
+                        distances[i] /= Constants.MaxDistance;
                     }
 
                     for (var i = 0; i < distances.Length; i++)

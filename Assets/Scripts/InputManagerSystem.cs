@@ -25,6 +25,15 @@ namespace DefaultNamespace
             {
                 ref var singleton = ref SystemAPI.GetSingletonRW<ParticleImage>().ValueRW;
                 singleton.ZoomAmount = 4;
+                if (Input.GetKey(KeyCode.LeftShift))
+                {
+                    singleton.ZoomAmount *= 2;
+                }
+                if (Input.GetKey(KeyCode.LeftControl))
+                {
+                    singleton.ZoomAmount *= 4;
+                }
+                
                 var mousePos = Input.mousePosition;
 
                 float2 normalizedMousePos;
