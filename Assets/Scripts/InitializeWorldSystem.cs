@@ -10,7 +10,8 @@ namespace DefaultNamespace
     {
         private const int Colors = 4;
         private const int Repeats = 8 * Colors;
-        private const int TotalParticles = 512;
+        private const int ParticlesPerRepeat = 512;
+        public const int TotalParticles = Repeats * ParticlesPerRepeat;
 
         private int _repeats;
         private EntityArchetype _archetype;
@@ -52,7 +53,7 @@ namespace DefaultNamespace
                 state.EntityManager.CreateSingleton(attraction);
             }
             
-            var entities = state.EntityManager.CreateEntity(_archetype, TotalParticles, Allocator.Temp);
+            var entities = state.EntityManager.CreateEntity(_archetype, ParticlesPerRepeat, Allocator.Temp);
 
             var maxSize = Constants.MaxSize;
 

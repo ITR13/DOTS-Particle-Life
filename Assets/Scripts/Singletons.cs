@@ -15,4 +15,9 @@ namespace DefaultNamespace
         public float2 ZoomLocation;
         public NativeArray<uint> Image;
     }
+
+    public struct SwapChunk : IComponentData
+    {
+        public NativeParallelMultiHashMap<int2, Entity> Value;
+    }
 }

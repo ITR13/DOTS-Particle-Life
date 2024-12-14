@@ -12,6 +12,7 @@ namespace DefaultNamespace
     {
         public void OnCreate(ref SystemState state)
         {
+            state.RequireForUpdate<SwapChunk>();
             state.RequireForUpdate<ParticleAttraction>();
             state.RequireForUpdate<BeginSimulationEntityCommandBufferSystem.Singleton>();
         }
@@ -64,17 +65,16 @@ namespace DefaultNamespace
             state.Dependency = new MoveJob().ScheduleParallel(state.Dependency);
             state.Dependency = new LoopJob { MaxSize = maxSize }.ScheduleParallel(state.Dependency);
 
-            var ecb = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>()
-                .CreateCommandBuffer(state.WorldUnmanaged);
             var entityTypeHandle = SystemAPI.GetEntityTypeHandle();
             var query = SystemAPI.QueryBuilder().WithAll<ParticlePosition, ParticleChunk>().Build();
+            var swapChunks = SystemAPI.GetSingletonRW<SwapChunk>().ValueRW.Value;
 
             state.Dependency = new UpdateChunkJob
             {
                 PositionTypeHandle = positionTypeHandle,
                 EntityTypeHandle = entityTypeHandle,
                 ChunkTypeHandle = chunkPositionTypeHandle,
-                Ecb = ecb.AsParallelWriter(),
+                SwapChunks = swapChunks.AsParallelWriter(),
             }.ScheduleParallel(query, state.Dependency);
         }
 
@@ -351,7 +351,7 @@ namespace DefaultNamespace
             [ReadOnly] public EntityTypeHandle EntityTypeHandle;
             public SharedComponentTypeHandle<ParticleChunk> ChunkTypeHandle;
 
-            public EntityCommandBuffer.ParallelWriter Ecb;
+            public NativeParallelMultiHashMap<int2, Entity>.ParallelWriter SwapChunks;
 
             public void Execute(
                 in ArchetypeChunk chunk,
@@ -371,7 +371,7 @@ namespace DefaultNamespace
                 {
                     var newChunk = Constants.PosToChunk(positions[i].Value);
                     if (math.all(newChunk == currentChunk)) continue;
-                    Ecb.SetSharedComponent(unfilteredChunkIndex, entities[i], new ParticleChunk { Value = newChunk });
+                    SwapChunks.Add(newChunk, entities[i]);
                 }
             }
         }
