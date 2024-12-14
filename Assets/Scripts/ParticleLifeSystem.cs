@@ -14,7 +14,6 @@ namespace DefaultNamespace
         {
             state.RequireForUpdate<SwapChunk>();
             state.RequireForUpdate<ParticleAttraction>();
-            state.RequireForUpdate<BeginSimulationEntityCommandBufferSystem.Singleton>();
         }
 
         [BurstCompile]

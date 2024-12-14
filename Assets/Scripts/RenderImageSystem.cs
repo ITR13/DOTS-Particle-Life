@@ -1,12 +1,11 @@
-﻿using Unity.Burst;
-using Unity.Entities;
+﻿using Unity.Entities;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace DefaultNamespace
 {
     [UpdateInGroup(typeof(PresentationSystemGroup))]
-    public partial struct RenderImage : ISystem
+    public partial struct RenderImageSystem : ISystem
     {
         private UnityObjectRef<Texture2D> _texture;
         private UnityObjectRef<RenderTexture> _renderTexture;
