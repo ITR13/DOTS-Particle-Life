@@ -20,7 +20,9 @@ namespace DefaultNamespace
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            if (Input.GetKeyDown(KeyCode.R)) RandomizeAttraction();
+            if (Input.GetKeyDown(KeyCode.R)) RandomizeAttraction(ref state);
+            if (Input.GetKeyDown(KeyCode.V)) ToggleVis(ref state);
+
             if (Input.GetMouseButton(0))
             {
                 ref var singleton = ref SystemAPI.GetSingletonRW<ParticleImage>().ValueRW;
@@ -74,13 +76,22 @@ namespace DefaultNamespace
             }
         }
 
-        private void RandomizeAttraction()
+        private void RandomizeAttraction(ref SystemState state)
         {
             ref var particleAttraction = ref SystemAPI.GetSingletonRW<ParticleAttraction>().ValueRW;
             for (var i = 0; i < Constants.Colors * Constants.Colors; i++)
             {
                 particleAttraction.Value[i] = (half)_random.NextFloat(-1, 1);
             }
+        }
+
+        private void ToggleVis(ref SystemState state)
+        {
+            ref var renderImageState = ref state.WorldUnmanaged.GetExistingSystemState<RenderImageSystem>();
+            ref var drawParticleSystem = ref state.WorldUnmanaged.GetExistingSystemState<DrawParticleSystem>();
+
+            renderImageState.Enabled = !renderImageState.Enabled;
+            drawParticleSystem.Enabled = !drawParticleSystem.Enabled;
         }
     }
 }

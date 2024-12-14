@@ -31,22 +31,22 @@ namespace DefaultNamespace
             state.RequireForUpdate<ParticleImage>();
 
             _colors = new NativeArray<uint>(16, Allocator.Domain);
-            _colors[0] = 0xFF4F2F2F;
-            _colors[1] = 0xFF8B4513;
-            _colors[2] = 0xFF13458B;
-            _colors[3] = 0xFF006400;
-            _colors[4] = 0xFF004000;
-            _colors[5] = 0xFF76B6BD;
-            _colors[6] = 0xFF7F007F;
-            _colors[7] = 0xFFFF0000;
-            _colors[8] = 0xFF00A5FF;
-            _colors[9] = 0xFF00FFFF;
-            _colors[10] = 0xFF00FF00;
-            _colors[11] = 0xFFFA9A00;
-            _colors[12] = 0xFF0000CD;
-            _colors[13] = 0xFFCD0000;
-            _colors[14] = 0xFFFF00FF;
-            _colors[15] = 0xFF7093DB;
+            _colors[00] = 0xFF0000FF;
+            _colors[01] = 0xFF00FF00;
+            _colors[02] = 0xFFFF0000;
+            _colors[03] = 0xFF7F007F;
+            _colors[04] = 0xFF007F7F;
+            _colors[05] = 0xFF7F7F00;
+            _colors[06] = 0xFF7F00FF;
+            _colors[07] = 0xFF00FF7F;
+            _colors[08] = 0xFFFF7F00;
+            _colors[09] = 0xFF007FFF;
+            _colors[10] = 0xFF7FFF00;
+            _colors[11] = 0xFFFF007F;
+            _colors[12] = 0xFFFFFF00;
+            _colors[13] = 0xFFFF00FF;
+            _colors[14] = 0xFF00FFFF;
+            _colors[15] = 0xFFFFFFFF;
         }
 
         [BurstCompile]
