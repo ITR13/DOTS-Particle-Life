@@ -20,7 +20,6 @@ namespace DefaultNamespace
         public void OnUpdate(ref SystemState state)
         {
             state.CompleteDependency();
-            state.Dependency = new DragJob().ScheduleParallel(state.Dependency);
 
             var attraction = SystemAPI.GetSingleton<ParticleAttraction>().Value;
 
@@ -60,20 +59,21 @@ namespace DefaultNamespace
                 Attraction = attraction,
             }.ScheduleParallel(particleQuery, state.Dependency);
 
-            // TODO: Convert these jobs into a single job
-            state.Dependency = new MoveJob().ScheduleParallel(state.Dependency);
-            state.Dependency = new LoopJob { MaxSize = maxSize }.ScheduleParallel(state.Dependency);
-
             var entityTypeHandle = SystemAPI.GetEntityTypeHandle();
-            var query = SystemAPI.QueryBuilder().WithAll<ParticlePosition, ParticleChunk>().Build();
+            var query = SystemAPI.QueryBuilder()
+                .WithAll<ParticleVelocity, ParticleChunk>()
+                .WithAllRW<ParticlePosition>()
+                .Build();
             var swapChunks = SystemAPI.GetSingletonRW<SwapChunk>().ValueRW.Value;
 
-            state.Dependency = new UpdateChunkJob
+            state.Dependency = new MoveLoopAndUpdateChunkJob
             {
+                VelocityTypeHandle = velocityTypeHandle,
                 PositionTypeHandle = positionTypeHandle,
                 EntityTypeHandle = entityTypeHandle,
-                ChunkTypeHandle = chunkPositionTypeHandle,
+                ChunkPositionTypeHandle = chunkPositionTypeHandle,
                 SwapChunks = swapChunks.AsParallelWriter(),
+                MaxSize = maxSize
             }.ScheduleParallel(query, state.Dependency);
         }
 
@@ -108,6 +108,7 @@ namespace DefaultNamespace
                 var distances = new NativeArray<float>(positions.Length, Allocator.Temp);
                 var directions = new NativeArray<float2>(positions.Length, Allocator.Temp);
 
+                UpdateDrag(velocities);
                 UpdateInner(distances, directions, positions, velocities, Attraction[color][color]);
 
                 var delta = (int)math.ceil(Constants.MaxDistance / Constants.ChunkSize);
@@ -170,6 +171,14 @@ namespace DefaultNamespace
                             );
                         }
                     }
+                }
+            }
+
+            private void UpdateDrag(NativeArray<float2> velocities)
+            {
+                for (var i = 0; i < velocities.Length; i++)
+                {
+                    velocities[i] *= Constants.Drag;
                 }
             }
 
@@ -315,41 +324,14 @@ namespace DefaultNamespace
         }
 
         [BurstCompile]
-        private partial struct DragJob : IJobEntity
+        private struct MoveLoopAndUpdateChunkJob : IJobChunk
         {
-            private void Execute(ref ParticleVelocity velocity)
-            {
-                velocity.Value *= Constants.Drag;
-            }
-        }
-
-        [BurstCompile]
-        private partial struct MoveJob : IJobEntity
-        {
-            private void Execute(in ParticleVelocity velocity, ref ParticlePosition position)
-            {
-                position.Value += velocity.Value;
-            }
-        }
-
-        [BurstCompile]
-        private partial struct LoopJob : IJobEntity
-        {
-            public float2 MaxSize;
-
-            private void Execute(ref ParticlePosition position)
-            {
-                position.Value = math.fmod(position.Value + MaxSize, MaxSize);
-            }
-        }
-
-        [BurstCompile]
-        private struct UpdateChunkJob : IJobChunk
-        {
-            [ReadOnly] public ComponentTypeHandle<ParticlePosition> PositionTypeHandle;
+            [ReadOnly] public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
+            [ReadOnly] public SharedComponentTypeHandle<ParticleChunk> ChunkPositionTypeHandle;
             [ReadOnly] public EntityTypeHandle EntityTypeHandle;
-            public SharedComponentTypeHandle<ParticleChunk> ChunkTypeHandle;
+            [ReadOnly] public float2 MaxSize;
 
+            public ComponentTypeHandle<ParticlePosition> PositionTypeHandle;
             public NativeParallelMultiHashMap<int2, Entity>.ParallelWriter SwapChunks;
 
             public void Execute(
@@ -361,15 +343,21 @@ namespace DefaultNamespace
             {
                 Assert.IsFalse(useEnabledMask);
 
-                var currentChunk = chunk.GetSharedComponent(ChunkTypeHandle).Value;
-
-                var positions = chunk.GetNativeArray(ref PositionTypeHandle);
+                var chunkPosition = chunk.GetSharedComponent(ChunkPositionTypeHandle).Value;
+                var positions = chunk.GetNativeArray(ref PositionTypeHandle).Reinterpret<float2>();
+                var velocities = chunk.GetNativeArray(ref VelocityTypeHandle).Reinterpret<float2>();
                 var entities = chunk.GetNativeArray(EntityTypeHandle);
 
                 for (var i = 0; i < positions.Length; i++)
                 {
-                    var newChunk = Constants.PosToChunk(positions[i].Value);
-                    if (math.all(newChunk == currentChunk)) continue;
+                    positions[i] += velocities[i];
+                    positions[i] = math.fmod(positions[i] + MaxSize, MaxSize);
+                }
+
+                for (var i = 0; i < positions.Length; i++)
+                {
+                    var newChunk = Constants.PosToChunk(positions[i]);
+                    if (math.all(newChunk == chunkPosition)) continue;
                     SwapChunks.Add(newChunk, entities[i]);
                 }
             }
