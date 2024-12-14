@@ -6,7 +6,7 @@ namespace DefaultNamespace
 {
     public struct ParticleAttraction : IComponentData
     {
-        public NativeArray<half> Value;
+        public NativeArray<half2> Value;
 #if DRAG_VARIANCE
         public NativeArray<float2> DefaultDrag;
 #endif

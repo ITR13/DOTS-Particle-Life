@@ -37,14 +37,14 @@ namespace DefaultNamespace
             {
                 var particleAttraction = new ParticleAttraction
                 {
-                    Value = new NativeArray<half>(Constants.Colors * Constants.Colors, Allocator.Domain),
+                    Value = new NativeArray<half2>(Constants.Colors * Constants.Colors, Allocator.Domain),
 #if DRAG_VARIANCE
                     DefaultDrag = new NativeArray<float2>(Constants.Colors, Allocator.Domain),
 #endif
                 };
                 for (var i = 0; i < Constants.Colors * Constants.Colors; i++)
                 {
-                    particleAttraction.Value[i] = (half)_random.NextFloat(-1, 1);
+                    particleAttraction.Value[i] = (half2)_random.NextFloat2(new float2(-1, -1), new float2(1, 1));
                 }
 
 #if DRAG_VARIANCE

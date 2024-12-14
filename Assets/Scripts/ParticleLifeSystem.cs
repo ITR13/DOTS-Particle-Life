@@ -92,7 +92,7 @@ namespace DefaultNamespace
             [NativeDisableContainerSafetyRestriction]
             public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
 
-            [ReadOnly] public NativeArray<half> Attraction;
+            [ReadOnly] public NativeArray<half2> Attraction;
 #if DRAG_VARIANCE
             [ReadOnly] public NativeArray<float2> DefaultDrag;
 #endif
@@ -207,7 +207,7 @@ namespace DefaultNamespace
                 NativeArray<float2> directions,
                 NativeArray<float2> positions,
                 NativeArray<float2> velocities,
-                float outerForce
+                float2 outerForce
             )
             {
                 for (var i = positions.Length - 1; i > 0; i--)
@@ -238,10 +238,17 @@ namespace DefaultNamespace
                         {
                             case < Constants.ForceBeta:
                                 distances[j] = distances[j] / Constants.ForceBeta - 1;
+                                distances[j] *= Constants.Force;
+                                break;
+                            case < Constants.ForceCeta:
+                                var abs = math.abs(2 * distances[j] - Constants.ForceCeta - Constants.ForceBeta);
+                                distances[j] = outerForce.x * (1 - abs / (Constants.ForceCeta - Constants.ForceBeta));
+                                distances[j] *= Constants.Force;
                                 break;
                             case < 1:
-                                var abs = math.abs(2 * distances[j] - 1 - Constants.ForceBeta);
-                                distances[j] = outerForce * (1 - abs / (1 - Constants.ForceBeta));
+                                var abs2 = math.abs(2 * distances[j] - 1 - Constants.ForceCeta);
+                                distances[j] = outerForce.y * (1 - abs2 / (1 - Constants.ForceCeta));
+                                distances[j] *= Constants.WeakForce;
                                 break;
                             default:
                                 distances[j] = 0;
@@ -251,7 +258,7 @@ namespace DefaultNamespace
 
                     for (var j = 0; j < i; j++)
                     {
-                        distances[j] = distances[j] * Constants.Force * Constants.MaxDistance;
+                        distances[j] = distances[j] * Constants.MaxDistance;
                     }
 
                     for (var j = 0; j < i; j++)
@@ -280,7 +287,7 @@ namespace DefaultNamespace
                 NativeArray<float2> positions,
                 NativeArray<float2> otherPositions,
                 NativeArray<float2> velocities,
-                float outerForce,
+                float2 outerForce,
                 float2 overlapDir,
                 float2 offset
             )
@@ -315,9 +322,13 @@ namespace DefaultNamespace
                             case < Constants.ForceBeta:
                                 distances[i] = distances[i] / Constants.ForceBeta - 1;
                                 break;
+                            case < Constants.ForceCeta:
+                                var abs = math.abs(2 * distances[i] - Constants.ForceCeta - Constants.ForceBeta);
+                                distances[i] = outerForce.x * (1 - abs / (Constants.ForceCeta - Constants.ForceBeta));
+                                break;
                             case < 1:
-                                var abs = math.abs(2 * distances[i] - 1 - Constants.ForceBeta);
-                                distances[i] = outerForce * (1 - abs / (1 - Constants.ForceBeta));
+                                var abs2 = math.abs(2 * distances[i] - 1 - Constants.ForceCeta);
+                                distances[i] = outerForce.y * (1 - abs2 / (1 - Constants.ForceCeta));
                                 break;
                             default:
                                 distances[i] = 0;

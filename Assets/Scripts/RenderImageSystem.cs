@@ -1,5 +1,6 @@
 ﻿using Unity.Entities;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 namespace DefaultNamespace
@@ -14,6 +15,7 @@ namespace DefaultNamespace
         {
             _texture = new Texture2D(Constants.ImageSize, Constants.ImageSize, TextureFormat.RGBA32, false);
             state.RequireForUpdate<ParticleImage>();
+            OnDemandRendering.renderFrameInterval = 3;
         }
 
         public void OnUpdate(ref SystemState state)
