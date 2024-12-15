@@ -14,6 +14,8 @@ namespace DefaultNamespace
         {
             _texture = new Texture2D(Constants.ImageSize, Constants.ImageSize, TextureFormat.RGBA32, false);
             state.RequireForUpdate<ParticleImage>();
+            
+            Debug.Log($"F16: {Unity.Burst.Intrinsics.X86.F16C.IsF16CSupported}");
         }
 
         public void OnUpdate(ref SystemState state)

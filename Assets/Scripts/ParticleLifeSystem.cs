@@ -5,6 +5,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace DefaultNamespace
 {
@@ -16,9 +17,18 @@ namespace DefaultNamespace
             state.RequireForUpdate<ParticleAttraction>();
         }
 
+        private int _frame;
+
+        private const int Stop1 = 250;
+        private const int Stop2 = 750;
+        
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
+            _frame++;
+            if (_frame == Stop1) Debug.Break();
+            if (_frame == Stop2) Debug.Break();
+
             state.CompleteDependency();
 
             var attraction = SystemAPI.GetSingleton<ParticleAttraction>();
@@ -68,6 +78,8 @@ namespace DefaultNamespace
                 .WithAllRW<ParticlePosition>()
                 .Build();
             var swapChunks = SystemAPI.GetSingletonRW<SwapChunk>().ValueRW.Value;
+
+            if (_frame >= Stop1) return;
 
             state.Dependency = new MoveLoopAndUpdateChunkJob
             {
@@ -343,7 +355,7 @@ namespace DefaultNamespace
             }
         }
 
-        [BurstCompile]
+        [BurstCompile(FloatPrecision.Low, FloatMode.Fast, OptimizeFor = OptimizeFor.FastCompilation)]
         private struct MoveLoopAndUpdateChunkJob : IJobChunk
         {
             [ReadOnly] public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
