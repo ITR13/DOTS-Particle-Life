@@ -19,7 +19,7 @@ namespace ParticleLife
         private Entity _targetEntity;
         private float _swapTimer;
         private float _oldNormalizedPosition;
-        
+
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
@@ -32,6 +32,7 @@ namespace ParticleLife
         public void OnUpdate(ref SystemState state)
         {
             if (Input.GetKeyDown(KeyCode.R)) RandomizeAttraction(ref state);
+            if (Input.GetKeyDown(KeyCode.E)) RandomizeAttractionSteps(ref state);
             if (Input.GetKeyDown(KeyCode.V)) ToggleVis(ref state);
             if (Input.GetKeyDown(KeyCode.T))
             {
@@ -101,11 +102,11 @@ namespace ParticleLife
                     var zoomMaxOffset = 1 - zoomMinOffset;
 
                     var normalizedPosition = pos / Constants.MaxSize;
-                    
+
                     var positionDistance =
                         math.distancesq(normalizedPosition, _oldNormalizedPosition) * singleton.ZoomAmount;
                     _swapTimer += math.max(10 / (math.pow(1.01f, positionDistance)), 0.1f);
-                    
+
                     normalizedPosition = math.clamp(
                         normalizedPosition,
                         new float2(zoomMinOffset, zoomMinOffset),
@@ -274,7 +275,24 @@ namespace ParticleLife
             }
 #endif
         }
-                
+
+        private void RandomizeAttractionSteps(ref SystemState state)
+        {
+            state.CompleteDependency();
+            ref var particleAttraction = ref SystemAPI.GetSingletonRW<ParticleAttraction>().ValueRW;
+            for (var i = 0; i < Constants.Colors * Constants.Colors; i++)
+            {
+                particleAttraction.Value[i] = (half)(_random.NextInt(-4, 5) / 4f);
+            }
+
+#if DRAG_VARIANCE
+            var maxDrag = new float2(Constants.DragVariance, Constants.DragVariance);
+            for (var i = 0; i < Constants.Colors; i++)
+            {
+                particleAttraction.DefaultDrag[i] = _random.NextFloat2(-maxDrag, maxDrag);
+            }
+#endif
+        }
 
         private void ToggleVis(ref SystemState state)
         {
