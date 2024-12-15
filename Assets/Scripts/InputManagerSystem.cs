@@ -78,6 +78,7 @@ namespace DefaultNamespace
 
         private void RandomizeAttraction(ref SystemState state)
         {
+            state.CompleteDependency();
             ref var particleAttraction = ref SystemAPI.GetSingletonRW<ParticleAttraction>().ValueRW;
             for (var i = 0; i < Constants.Colors * Constants.Colors; i++)
             {
