@@ -2,7 +2,6 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
-using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace DefaultNamespace
@@ -11,9 +10,8 @@ namespace DefaultNamespace
     public partial struct SwapChunkSystem : ISystem
     {
         private NativeParallelMultiHashMap<int2, Entity> _swapChunkQueue;
-        private NativeParallelMultiHashMap<int2, ArchetypeChunk> _archetypeMap;
+        private NativeParallelMultiHashMap<int2, ChunkIndex> _archetypeMap;
         private int _lastArchetypeCount;
-        private float _processorCount;
 
         public void OnCreate(ref SystemState state)
         {
@@ -22,7 +20,7 @@ namespace DefaultNamespace
                 Allocator.Domain
             );
 
-            _archetypeMap = new NativeParallelMultiHashMap<int2, ArchetypeChunk>(
+            _archetypeMap = new NativeParallelMultiHashMap<int2, ChunkIndex>(
                 InitializeWorldSystem.TotalParticles,
                 Allocator.Domain
             );
@@ -36,58 +34,78 @@ namespace DefaultNamespace
             );
             state.RequireForUpdate<SwapChunk>();
             state.RequireForUpdate<ParticleAttraction>();
-
-            _processorCount = System.Environment.ProcessorCount;
         }
 
         [BurstCompile]
-        public void OnUpdate(ref SystemState state)
+        public unsafe void OnUpdate(ref SystemState state)
         {
             state.CompleteDependency();
             ref var swapChunk = ref SystemAPI.GetSingletonRW<SwapChunk>().ValueRW;
-            var anyChanged = false;
-
             var queue = swapChunk.Queue;
+            var changedChunkPositions = new NativeHashSet<int2>(queue.Count() * 2, Allocator.Temp);
 
-            unsafe
+            var access = state.EntityManager.GetCheckedEntityDataAccess(state.SystemHandle);
+            var ecs = access->EntityComponentStore;
+            var changes = access->BeginStructuralChanges();
+            var particleChunkTypeIndex = TypeManager.GetTypeIndex<ParticleChunk>();
+            var defaultValue = default(ParticleChunk);
+
+            var archetype = InitializeWorldSystem.ArchetypeField.Data.Archetype;
+            var particleChunkIndexInTypeArray = ChunkDataUtility.GetIndexInTypeArray(
+                archetype,
+                particleChunkTypeIndex
+            );
+            var sharedComponentOffset = particleChunkIndexInTypeArray - archetype->FirstSharedComponent;
+
+            foreach (var pair in swapChunk.Queue)
             {
-                var access = state.EntityManager.GetCheckedEntityDataAccess(state.SystemHandle);
-                var changes = access->BeginStructuralChanges();
-                var ti = TypeManager.GetTypeIndex<ParticleChunk>();
-                var defaultValue = default(ParticleChunk);
+                var entity = pair.Value;
+                var newChunkPosition = new ParticleChunk { Value = pair.Key };
 
-                foreach (var pair in swapChunk.Queue)
-                {
-                    var newChunk = new ParticleChunk { Value = pair.Key };
-                    access->SetSharedComponentData_Unmanaged(
-                        pair.Value,
-                        ti,
-                        UnsafeUtility.AddressOf(ref newChunk),
-                        UnsafeUtility.AddressOf(ref defaultValue)
-                    );
-                    anyChanged = true;
-                }
 
-                access->EndStructuralChanges(ref changes);
+                var chunk = ecs->GetChunk(entity);
+                var sharedComponentValueArray = archetype->Chunks.GetSharedComponentValues(chunk.ListIndex);
+                var sharedComponentIndex = sharedComponentValueArray[sharedComponentOffset];
+                var oldPosition = access->GetSharedComponentData_Unmanaged<ParticleChunk>(sharedComponentIndex);
+                changedChunkPositions.Add(oldPosition.Value);
+
+                access->SetSharedComponentData_Unmanaged(
+                    entity,
+                    particleChunkTypeIndex,
+                    UnsafeUtility.AddressOf(ref newChunkPosition),
+                    UnsafeUtility.AddressOf(ref defaultValue)
+                );
+
+                changedChunkPositions.Add(pair.Key);
             }
 
-            queue.Clear();
-            var archetypeQuery = SystemAPI.QueryBuilder().WithAll<ParticleChunk>().Build();
-            var archetypes = archetypeQuery.ToArchetypeChunkArray(state.WorldUpdateAllocator);
+            access->EndStructuralChanges(ref changes);
 
-            if (!anyChanged && archetypes.Length == _lastArchetypeCount) return;
-            _lastArchetypeCount = archetypes.Length;
-            swapChunk.ArchetypeMap.Clear();
-            state.Dependency = new UpdateArchetypeMapJob
+            queue.Clear();
+            if (changedChunkPositions.Count == 0) return;
+
+            var map = swapChunk.ArchetypeMap;
+            foreach (var pos in changedChunkPositions)
             {
-                ParticleChunkHandle = SystemAPI.GetSharedComponentTypeHandle<ParticleChunk>(),
-                Archetypes = archetypes,
-                Map = swapChunk.ArchetypeMap.AsParallelWriter(),
-            }.Schedule(
-                _lastArchetypeCount,
-                (int)math.ceil(_lastArchetypeCount / _processorCount),
-                state.Dependency
-            );
+                map.Remove(pos);
+            }
+
+            var archetypeQuery = SystemAPI.QueryBuilder().WithAll<ParticleChunk>().Build();
+            var matchingChunkCache = archetypeQuery.__impl->GetMatchingChunkCache();
+            var cachedChunkCount = matchingChunkCache.Length;
+            var cachedChunkIndices = matchingChunkCache.ChunkIndices;
+
+            for (var chunkIndexInCache = 0; chunkIndexInCache < cachedChunkCount; ++chunkIndexInCache)
+            {
+                var chunkIndex = cachedChunkIndices[chunkIndexInCache];
+
+                var sharedComponentValueArray = archetype->Chunks.GetSharedComponentValues(chunkIndex.ListIndex);
+                var sharedComponentIndex = sharedComponentValueArray[sharedComponentOffset];
+                var position = access->GetSharedComponentData_Unmanaged<ParticleChunk>(sharedComponentIndex).Value;
+
+                if (!changedChunkPositions.Contains(position)) continue;
+                map.Add(position, chunkIndex);
+            }
         }
 
         [BurstCompile]
@@ -95,19 +113,6 @@ namespace DefaultNamespace
         {
             _swapChunkQueue.Dispose();
             _archetypeMap.Dispose();
-        }
-
-        [BurstCompile]
-        private struct UpdateArchetypeMapJob : IJobParallelFor
-        {
-            [ReadOnly] public SharedComponentTypeHandle<ParticleChunk> ParticleChunkHandle;
-            [ReadOnly] public NativeArray<ArchetypeChunk> Archetypes;
-            public NativeParallelMultiHashMap<int2, ArchetypeChunk>.ParallelWriter Map;
-
-            public void Execute(int index)
-            {
-                Map.Add(Archetypes[index].GetSharedComponent(ParticleChunkHandle).Value, Archetypes[index]);
-            }
         }
     }
 }

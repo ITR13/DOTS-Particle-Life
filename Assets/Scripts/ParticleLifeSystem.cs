@@ -75,7 +75,7 @@ namespace DefaultNamespace
         )]
         private struct AttractParticles : IJobChunk
         {
-            [ReadOnly] public NativeParallelMultiHashMap<int2, ArchetypeChunk> ChunkPosToChunk;
+            [ReadOnly] public NativeParallelMultiHashMap<int2, ChunkIndex> ChunkPosToChunk;
 
             [ReadOnly] public ComponentTypeHandle<ParticlePosition> PositionTypeHandle;
             [ReadOnly] public SharedComponentTypeHandle<ParticleChunk> ChunkPositionTypeHandle;
@@ -161,10 +161,14 @@ namespace DefaultNamespace
                             }
                         }
 
-                        foreach (var otherChunk in ChunkPosToChunk.GetValuesForKey(otherChunkPosition))
+                        foreach (var otherChunkIndex in ChunkPosToChunk.GetValuesForKey(otherChunkPosition))
                         {
-                            if (chunk.SequenceNumber == otherChunk.SequenceNumber) continue;
-
+                            if (chunk.SequenceNumber == otherChunkIndex.SequenceNumber) continue;
+                            ArchetypeChunk otherChunk;
+                            unsafe
+                            {
+                                otherChunk = new ArchetypeChunk(otherChunkIndex, chunk.m_EntityComponentStore);
+                            }
                             var otherColor = otherChunk.GetSharedComponent(ColorTypeHandle).Value;
                             var otherPositions =
                                 otherChunk.GetNativeArray(ref PositionTypeHandle).Reinterpret<float2>();

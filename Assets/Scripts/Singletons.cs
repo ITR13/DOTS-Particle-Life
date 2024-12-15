@@ -19,9 +19,9 @@ namespace DefaultNamespace
         public NativeArray<uint> Image;
     }
 
-    public struct SwapChunk : IComponentData
+    internal struct SwapChunk : IComponentData
     {
         public NativeParallelMultiHashMap<int2, Entity> Queue;
-        public NativeParallelMultiHashMap<int2, ArchetypeChunk> ArchetypeMap;
+        public NativeParallelMultiHashMap<int2, ChunkIndex> ArchetypeMap;
     }
 }

@@ -1,4 +1,5 @@
-﻿using Unity.Burst;
+﻿using JetBrains.Annotations;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -8,6 +9,14 @@ namespace DefaultNamespace
     [UpdateBefore(typeof(SwapChunkSystem))]
     public partial struct InitializeWorldSystem : ISystem
     {
+        public static readonly SharedStatic<EntityArchetype> ArchetypeField =
+            SharedStatic<EntityArchetype>.GetOrCreate<ArchetypeFieldKey>();
+
+        [UsedImplicitly]
+        private class ArchetypeFieldKey
+        {
+        }
+
         private const int Repeats = 8 * Constants.Colors;
         private const int ParticlesPerRepeat = 256;
         public const int TotalParticles = Repeats * ParticlesPerRepeat;
@@ -26,6 +35,8 @@ namespace DefaultNamespace
             types[2] = ComponentType.ReadOnly<ParticleChunk>();
             types[3] = ComponentType.ReadOnly<ParticleColor>();
             _archetype = state.EntityManager.CreateArchetype(types);
+            ArchetypeField.Data = _archetype;
+            
             _random = new Random(1337);
         }
 
