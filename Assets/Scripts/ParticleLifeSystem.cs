@@ -123,8 +123,8 @@ namespace DefaultNamespace
                 var color = chunk.GetSharedComponent(ColorTypeHandle).Value;
                 var chunkPosition = chunk.GetSharedComponent(ChunkPositionTypeHandle).Value;
 
-                var distances = new NativeArray<float>(positions.Length, Allocator.Temp);
-                var directions = new NativeArray<float2>(positions.Length, Allocator.Temp);
+                var distances = new NativeArray<float>(positions.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+                var directions = new NativeArray<float2>(positions.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
 
 #if DRAG_VARIANCE
                 UpdateDrag(velocities, DefaultDrag[color]);
