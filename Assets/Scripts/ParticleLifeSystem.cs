@@ -21,7 +21,7 @@ namespace DefaultNamespace
 
         private const int Stop1 = 250;
         private const int Stop2 = 750;
-        
+
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
@@ -123,8 +123,16 @@ namespace DefaultNamespace
                 var color = chunk.GetSharedComponent(ColorTypeHandle).Value;
                 var chunkPosition = chunk.GetSharedComponent(ChunkPositionTypeHandle).Value;
 
-                var distances = new NativeArray<float>(positions.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-                var directions = new NativeArray<float2>(positions.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+                var distances = new NativeArray<float>(
+                    positions.Length,
+                    Allocator.Temp,
+                    NativeArrayOptions.UninitializedMemory
+                );
+                var directions = new NativeArray<float2>(
+                    positions.Length,
+                    Allocator.Temp,
+                    NativeArrayOptions.UninitializedMemory
+                );
 
 #if DRAG_VARIANCE
                 UpdateDrag(velocities, DefaultDrag[color]);
@@ -242,28 +250,21 @@ namespace DefaultNamespace
                     for (var j = 0; j < i; j++)
                     {
                         distances[j] /= Constants.MaxDistance;
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
                         switch (distances[j])
                         {
                             case < Constants.ForceBeta:
                                 distances[j] = distances[j] / Constants.ForceBeta - 1;
+                                distances[j] *= Constants.Force * Constants.MaxDistance;
                                 break;
                             case < 1:
                                 var abs = math.abs(2 * distances[j] - 1 - Constants.ForceBeta);
                                 distances[j] = outerForce * (1 - abs / (1 - Constants.ForceBeta));
+                                distances[j] *= Constants.Force * Constants.MaxDistance;
                                 break;
                             default:
                                 distances[j] = 0;
                                 break;
                         }
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
-                        distances[j] = distances[j] * Constants.Force * Constants.MaxDistance;
                     }
 
                     for (var j = 0; j < i; j++)
@@ -318,28 +319,21 @@ namespace DefaultNamespace
                     for (var i = 0; i < distances.Length; i++)
                     {
                         distances[i] /= Constants.MaxDistance;
-                    }
-
-                    for (var i = 0; i < distances.Length; i++)
-                    {
                         switch (distances[i])
                         {
                             case < Constants.ForceBeta:
                                 distances[i] = distances[i] / Constants.ForceBeta - 1;
+                                distances[i] *= Constants.Force * Constants.MaxDistance;
                                 break;
                             case < 1:
                                 var abs = math.abs(2 * distances[i] - 1 - Constants.ForceBeta);
                                 distances[i] = outerForce * (1 - abs / (1 - Constants.ForceBeta));
+                                distances[i] *= Constants.Force * Constants.MaxDistance;
                                 break;
                             default:
                                 distances[i] = 0;
                                 break;
                         }
-                    }
-
-                    for (var i = 0; i < distances.Length; i++)
-                    {
-                        distances[i] *= Constants.Force * Constants.MaxDistance;
                     }
 
                     for (var i = 0; i < distances.Length; i++)
