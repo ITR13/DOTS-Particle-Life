@@ -249,14 +249,15 @@ namespace DefaultNamespace
 
                     for (var j = 0; j < i; j++)
                     {
-                        distances[j] /= Constants.MaxDistance;
                         switch (distances[j])
                         {
-                            case < Constants.ForceBeta:
+                            case < Constants.ForceBeta * Constants.MaxDistance:
+                                distances[j] /= Constants.MaxDistance;
                                 distances[j] = distances[j] / Constants.ForceBeta - 1;
                                 distances[j] *= Constants.Force * Constants.MaxDistance;
                                 break;
-                            case < 1:
+                            case < Constants.MaxDistance:
+                                distances[j] /= Constants.MaxDistance;
                                 var abs = math.abs(2 * distances[j] - 1 - Constants.ForceBeta);
                                 distances[j] = outerForce * (1 - abs / (1 - Constants.ForceBeta));
                                 distances[j] *= Constants.Force * Constants.MaxDistance;
@@ -318,14 +319,15 @@ namespace DefaultNamespace
 
                     for (var i = 0; i < distances.Length; i++)
                     {
-                        distances[i] /= Constants.MaxDistance;
                         switch (distances[i])
                         {
-                            case < Constants.ForceBeta:
+                            case < Constants.ForceBeta * Constants.MaxDistance:
+                                distances[i] /= Constants.MaxDistance;
                                 distances[i] = distances[i] / Constants.ForceBeta - 1;
                                 distances[i] *= Constants.Force * Constants.MaxDistance;
                                 break;
-                            case < 1:
+                            case <  Constants.MaxDistance:
+                                distances[i] /= Constants.MaxDistance;
                                 var abs = math.abs(2 * distances[i] - 1 - Constants.ForceBeta);
                                 distances[i] = outerForce * (1 - abs / (1 - Constants.ForceBeta));
                                 distances[i] *= Constants.Force * Constants.MaxDistance;
