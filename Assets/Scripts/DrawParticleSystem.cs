@@ -6,6 +6,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace ParticleLife
 {
@@ -86,6 +87,7 @@ namespace ParticleLife
             state.Dependency = new DrawParticleJob
             {
                 ColorTypeHandle = colorTypeHandle,
+                ChunkTypeHandle = SystemAPI.GetSharedComponentTypeHandle<ParticleChunk>(),
                 PositionTypeHandle = positionTypeHandle,
                 Image = image,
                 ValidColors = _colors,
@@ -111,6 +113,7 @@ namespace ParticleLife
         private struct DrawParticleJob : IJobChunk
         {
             [ReadOnly] public SharedComponentTypeHandle<ParticleColor> ColorTypeHandle;
+            [ReadOnly] public SharedComponentTypeHandle<ParticleChunk> ChunkTypeHandle;
             [ReadOnly] public ComponentTypeHandle<ParticlePosition> PositionTypeHandle;
             [ReadOnly] public NativeArray<uint> ValidColors;
 
@@ -128,6 +131,47 @@ namespace ParticleLife
             )
             {
                 Assert.IsFalse(useEnabledMask);
+
+                if (ZoomAmount > 1)
+                {
+                    var chunkPosition = chunk.GetSharedComponent(ChunkTypeHandle).Value;
+
+                    var minPos = (int2)(
+                        (
+                            chunkPosition *
+                            (Constants.ImageSize / Constants.MapSize) -
+                            Offset
+                        ) *
+                        ZoomAmount
+                    );
+                    var maxPos = (int2)(
+                        (
+                            (chunkPosition + new int2(1, 1)) *
+                            (Constants.ImageSize / Constants.MapSize) -
+                            Offset
+                        ) *
+                        ZoomAmount
+                    );
+
+                    if (math.any(maxPos < 0 | minPos >= Constants.ImageSize)) return;
+
+                    for (var y = minPos.y; y <= maxPos.y; y++)
+                    {
+                        if (minPos.x is >= 0 and < Constants.ImageSize && y is >= 0 and < Constants.ImageSize)
+                            Image[y * Constants.ImageSize + minPos.x] |= 0xFF0F0F0F;
+
+                        if (maxPos.x is >= 0 and < Constants.ImageSize && y is >= 0 and < Constants.ImageSize)
+                            Image[y * Constants.ImageSize + maxPos.x] |= 0xFF0F0F0F;
+                    }
+
+                    for (var x = minPos.x; x <= maxPos.x; x++)
+                    {
+                        if (x is >= 0 and < Constants.ImageSize && minPos.y is >= 0 and < Constants.ImageSize)
+                            Image[minPos.y * Constants.ImageSize + x] |= 0xFF0F0F0F;
+                        if (x is >= 0 and < Constants.ImageSize && maxPos.y is >= 0 and < Constants.ImageSize)
+                            Image[maxPos.y * Constants.ImageSize + x] |= 0xFF0F0F0F;
+                    }
+                }
 
                 var color = chunk.GetSharedComponent(ColorTypeHandle).Value;
                 var positions = chunk.GetNativeArray(ref PositionTypeHandle);
