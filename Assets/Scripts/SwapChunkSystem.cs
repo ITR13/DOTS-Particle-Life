@@ -1,5 +1,6 @@
 ﻿using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -46,13 +47,31 @@ namespace DefaultNamespace
             ref var swapChunk = ref SystemAPI.GetSingletonRW<SwapChunk>().ValueRW;
             var anyChanged = false;
 
-            foreach (var pair in swapChunk.Queue)
+            var queue = swapChunk.Queue;
+
+            unsafe
             {
-                state.EntityManager.SetSharedComponent(pair.Value, new ParticleChunk { Value = pair.Key });
-                anyChanged = true;
+                var access = state.EntityManager.GetCheckedEntityDataAccess(state.SystemHandle);
+                var changes = access->BeginStructuralChanges();
+                var ti = TypeManager.GetTypeIndex<ParticleChunk>();
+                var defaultValue = default(ParticleChunk);
+
+                foreach (var pair in swapChunk.Queue)
+                {
+                    var newChunk = new ParticleChunk { Value = pair.Key };
+                    access->SetSharedComponentData_Unmanaged(
+                        pair.Value,
+                        ti,
+                        UnsafeUtility.AddressOf(ref newChunk),
+                        UnsafeUtility.AddressOf(ref defaultValue)
+                    );
+                    anyChanged = true;
+                }
+
+                access->EndStructuralChanges(ref changes);
             }
 
-            swapChunk.Queue.Clear();
+            queue.Clear();
             var archetypeQuery = SystemAPI.QueryBuilder().WithAll<ParticleChunk>().Build();
             var archetypes = archetypeQuery.ToArchetypeChunkArray(state.WorldUpdateAllocator);
 
@@ -79,7 +98,7 @@ namespace DefaultNamespace
         }
 
         [BurstCompile]
-        public partial struct UpdateArchetypeMapJob : IJobParallelFor
+        private struct UpdateArchetypeMapJob : IJobParallelFor
         {
             [ReadOnly] public SharedComponentTypeHandle<ParticleChunk> ParticleChunkHandle;
             [ReadOnly] public NativeArray<ArchetypeChunk> Archetypes;
