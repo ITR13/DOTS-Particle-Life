@@ -1,5 +1,7 @@
-﻿using Unity.Assertions;
+﻿using System;
+using Unity.Assertions;
 using Unity.Burst;
+using Unity.Burst.CompilerServices;
 using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -109,6 +111,7 @@ namespace DefaultNamespace
             [ReadOnly] public NativeArray<float2> DefaultDrag;
 #endif
 
+            [SkipLocalsInit]
             public void Execute(
                 in ArchetypeChunk chunk,
                 int unfilteredChunkIndex,
@@ -123,8 +126,8 @@ namespace DefaultNamespace
                 var color = chunk.GetSharedComponent(ColorTypeHandle).Value;
                 var chunkPosition = chunk.GetSharedComponent(ChunkPositionTypeHandle).Value;
 
-                var distances = new NativeArray<float>(positions.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-                var directions = new NativeArray<float2>(positions.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+                Span<float> distances = stackalloc float[positions.Length];
+                Span<float2> directions = stackalloc float2[positions.Length];
 
 #if DRAG_VARIANCE
                 UpdateDrag(velocities, DefaultDrag[color]);
@@ -215,8 +218,8 @@ namespace DefaultNamespace
 #endif
 
             private void UpdateInner(
-                NativeArray<float> distances,
-                NativeArray<float2> directions,
+                Span<float> distances,
+                Span<float2> directions,
                 NativeArray<float2> positions,
                 NativeArray<float2> velocities,
                 float outerForce
@@ -287,8 +290,8 @@ namespace DefaultNamespace
             }
 
             private void UpdateOuter(
-                NativeArray<float> distances,
-                NativeArray<float2> directions,
+                Span<float> distances,
+                Span<float2> directions,
                 NativeArray<float2> positions,
                 NativeArray<float2> otherPositions,
                 NativeArray<float2> velocities,
