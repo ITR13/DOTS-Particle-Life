@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 namespace DefaultNamespace
 {
-    [UpdateInGroup(typeof(PresentationSystemGroup))]
+    [UpdateAfter(typeof(ParticleLifeSystem))]
     public partial struct RenderImageSystem : ISystem
     {
         private UnityObjectRef<Texture2D> _texture;
@@ -14,8 +14,6 @@ namespace DefaultNamespace
         {
             _texture = new Texture2D(Constants.ImageSize, Constants.ImageSize, TextureFormat.RGBA32, false);
             state.RequireForUpdate<ParticleImage>();
-            
-            Debug.Log($"F16: {Unity.Burst.Intrinsics.X86.F16C.IsF16CSupported}");
         }
 
         public void OnUpdate(ref SystemState state)
@@ -25,7 +23,6 @@ namespace DefaultNamespace
                 var uiImage = Object.FindAnyObjectByType<RawImage>();
                 if (uiImage == null) return;
                 _renderTexture = (RenderTexture)uiImage.texture;
-                Debug.Log("Found render texture!");
             }
 
             var image = SystemAPI.GetSingleton<ParticleImage>();

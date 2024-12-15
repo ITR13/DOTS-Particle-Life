@@ -5,7 +5,7 @@ using Unity.Mathematics;
 
 namespace DefaultNamespace
 {
-    [UpdateInGroup(typeof(InitializationSystemGroup))]
+    [UpdateBefore(typeof(SwapChunkSystem))]
     public partial struct InitializeWorldSystem : ISystem
     {
         private const int Repeats = 8 * Constants.Colors;

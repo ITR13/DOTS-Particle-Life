@@ -5,7 +5,6 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
-using UnityEngine;
 
 namespace DefaultNamespace
 {
@@ -17,18 +16,9 @@ namespace DefaultNamespace
             state.RequireForUpdate<ParticleAttraction>();
         }
 
-        private int _frame;
-
-        private const int Stop1 = 250;
-        private const int Stop2 = 750;
-
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            _frame++;
-            if (_frame == Stop1) Debug.Break();
-            if (_frame == Stop2) Debug.Break();
-
             state.CompleteDependency();
 
             var attraction = SystemAPI.GetSingleton<ParticleAttraction>();
@@ -38,21 +28,9 @@ namespace DefaultNamespace
                 .WithAll<ParticlePosition, ParticleChunk, ParticleColor>()
                 .Build();
 
-            var archetypes = particleQuery.ToArchetypeChunkArray(Allocator.Temp);
-            if (archetypes.Length == 0) return;
-
-            var chunkPosToChunk = new NativeParallelMultiHashMap<int2, ArchetypeChunk>(
-                archetypes.Length,
-                state.WorldUpdateAllocator
-            );
+            ref var swapChunks = ref SystemAPI.GetSingletonRW<SwapChunk>().ValueRW;
+            var chunkPosToChunk = swapChunks.ArchetypeMap;
             var chunkPositionTypeHandle = SystemAPI.GetSharedComponentTypeHandle<ParticleChunk>();
-            foreach (var archetypeChunk in archetypes)
-            {
-                var archetype = archetypeChunk;
-                var chunkPosition = archetype.GetSharedComponent(chunkPositionTypeHandle).Value;
-                chunkPosToChunk.Add(chunkPosition, archetypeChunk);
-            }
-
             var positionTypeHandle = SystemAPI.GetComponentTypeHandle<ParticlePosition>();
             var velocityTypeHandle = SystemAPI.GetComponentTypeHandle<ParticleVelocity>();
             var colorTypeHandle = SystemAPI.GetSharedComponentTypeHandle<ParticleColor>();
@@ -77,9 +55,6 @@ namespace DefaultNamespace
                 .WithAll<ParticleVelocity, ParticleChunk>()
                 .WithAllRW<ParticlePosition>()
                 .Build();
-            var swapChunks = SystemAPI.GetSingletonRW<SwapChunk>().ValueRW.Value;
-
-            if (_frame >= Stop1) return;
 
             state.Dependency = new MoveLoopAndUpdateChunkJob
             {
@@ -87,12 +62,17 @@ namespace DefaultNamespace
                 PositionTypeHandle = positionTypeHandle,
                 EntityTypeHandle = entityTypeHandle,
                 ChunkPositionTypeHandle = chunkPositionTypeHandle,
-                SwapChunks = swapChunks.AsParallelWriter(),
+                SwapChunks = swapChunks.Queue.AsParallelWriter(),
                 MaxSize = maxSize
             }.ScheduleParallel(query, state.Dependency);
         }
 
-        [BurstCompile(FloatPrecision.Low, FloatMode.Fast, OptimizeFor = OptimizeFor.FastCompilation, DisableSafetyChecks = true)]
+        [BurstCompile(
+            FloatPrecision.Low,
+            FloatMode.Fast,
+            OptimizeFor = OptimizeFor.FastCompilation,
+            DisableSafetyChecks = true
+        )]
         private struct AttractParticles : IJobChunk
         {
             [ReadOnly] public NativeParallelMultiHashMap<int2, ArchetypeChunk> ChunkPosToChunk;
@@ -255,6 +235,7 @@ namespace DefaultNamespace
                                 distances[j] = 0;
                                 break;
                         }
+
                         directions[j] *= distances[j];
                         velocities[j] += directions[j];
                         velocityChange += directions[j];
@@ -282,7 +263,9 @@ namespace DefaultNamespace
                     {
                         directions[i] = positions[i] - otherPosition;
                         distances[i] = math.length(directions[i]);
+
                         directions[i] = math.select(overlapDir, directions[i] / distances[i], distances[i] > 0);
+
                         switch (distances[i])
                         {
                             case < Constants.ForceBeta * Constants.MaxDistance:
@@ -290,7 +273,7 @@ namespace DefaultNamespace
                                 distances[i] = distances[i] / Constants.ForceBeta - 1;
                                 distances[i] *= Constants.Force * Constants.MaxDistance;
                                 break;
-                            case <  Constants.MaxDistance:
+                            case < Constants.MaxDistance:
                                 distances[i] /= Constants.MaxDistance;
                                 var abs = math.abs(2 * distances[i] - 1 - Constants.ForceBeta);
                                 distances[i] = outerForce * (1 - abs / (1 - Constants.ForceBeta));
@@ -300,6 +283,7 @@ namespace DefaultNamespace
                                 distances[i] = 0;
                                 break;
                         }
+
                         directions[i] *= distances[i];
                         velocities[i] -= directions[i];
                     }
@@ -307,7 +291,12 @@ namespace DefaultNamespace
             }
         }
 
-        [BurstCompile(FloatPrecision.Low, FloatMode.Fast, OptimizeFor = OptimizeFor.FastCompilation, DisableSafetyChecks = true)]
+        [BurstCompile(
+            FloatPrecision.Low,
+            FloatMode.Fast,
+            OptimizeFor = OptimizeFor.FastCompilation,
+            DisableSafetyChecks = true
+        )]
         private struct MoveLoopAndUpdateChunkJob : IJobChunk
         {
             [ReadOnly] public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;

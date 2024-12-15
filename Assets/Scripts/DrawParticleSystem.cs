@@ -9,6 +9,7 @@ using Unity.Mathematics;
 
 namespace DefaultNamespace
 {
+    [UpdateAfter(typeof(SwapChunkSystem))]
     [UpdateBefore(typeof(ParticleLifeSystem))]
     public partial struct DrawParticleSystem : ISystem
     {

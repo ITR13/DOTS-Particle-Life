@@ -21,6 +21,7 @@ namespace DefaultNamespace
 
     public struct SwapChunk : IComponentData
     {
-        public NativeParallelMultiHashMap<int2, Entity> Value;
+        public NativeParallelMultiHashMap<int2, Entity> Queue;
+        public NativeParallelMultiHashMap<int2, ArchetypeChunk> ArchetypeMap;
     }
 }
