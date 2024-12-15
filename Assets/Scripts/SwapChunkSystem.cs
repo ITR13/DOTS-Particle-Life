@@ -4,7 +4,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
 
-namespace DefaultNamespace
+namespace ParticleLife
 {
     [UpdateBefore(typeof(ParticleLifeSystem))]
     public partial struct SwapChunkSystem : ISystem

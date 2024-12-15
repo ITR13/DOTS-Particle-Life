@@ -2,7 +2,7 @@
 using Unity.Entities;
 using Unity.Mathematics;
 
-namespace DefaultNamespace
+namespace ParticleLife
 {
     public struct ParticleAttraction : IComponentData
     {

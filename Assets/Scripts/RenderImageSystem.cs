@@ -2,7 +2,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace DefaultNamespace
+namespace ParticleLife
 {
     [UpdateAfter(typeof(ParticleLifeSystem))]
     public partial struct RenderImageSystem : ISystem

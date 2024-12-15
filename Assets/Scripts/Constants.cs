@@ -1,6 +1,6 @@
 ﻿using Unity.Mathematics;
 
-namespace DefaultNamespace
+namespace ParticleLife
 {
     public static class Constants
     {

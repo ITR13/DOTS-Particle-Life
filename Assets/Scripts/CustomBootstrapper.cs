@@ -1,7 +1,7 @@
 ﻿using Unity.Collections;
 using Unity.Entities;
 
-namespace DefaultNamespace
+namespace ParticleLife
 {
     public class CustomBootstrapper : ICustomBootstrap
     {

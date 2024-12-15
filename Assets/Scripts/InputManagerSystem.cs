@@ -4,7 +4,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using Random = Unity.Mathematics.Random;
 
-namespace DefaultNamespace
+namespace ParticleLife
 {
     [UpdateInGroup(typeof(InitializationSystemGroup))]
     public partial struct InputManagerSystem : ISystem

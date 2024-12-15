@@ -4,7 +4,7 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 
-namespace DefaultNamespace
+namespace ParticleLife
 {
     [UpdateBefore(typeof(SwapChunkSystem))]
     public partial struct InitializeWorldSystem : ISystem

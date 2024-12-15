@@ -7,7 +7,7 @@ using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-namespace DefaultNamespace
+namespace ParticleLife
 {
     [UpdateAfter(typeof(SwapChunkSystem))]
     [UpdateBefore(typeof(ParticleLifeSystem))]
