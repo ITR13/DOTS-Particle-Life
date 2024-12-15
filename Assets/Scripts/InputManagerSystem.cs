@@ -60,21 +60,29 @@ namespace ParticleLife
                 var max = 0;
                 var maxKey = int2.zero;
                 var mapSize = new int2(Constants.MapSize, Constants.MapSize);
+                var countArray = new NativeArray<int>(Constants.MapSize * Constants.MapSize, Allocator.Temp);
                 foreach (var key in keys)
                 {
-                    var delta = math.abs(_previousAuto - key);
-                    delta = math.select(mapSize - delta, delta, delta < mapSize / 2);
-                    if (math.any(delta > 2)) continue;
-
                     var count = 0;
                     foreach (var archetypeIndex in map.GetValuesForKey(key))
                     {
                         count += archetypeIndex.Count;
                     }
 
-                    if (count <= max) continue;
-                    max = count;
-                    maxKey = key;
+                    for (var dy = -2; dy <= 2; dy++)
+                    {
+                        for (var dx = -2; dx <= 2; dx++)
+                        {
+                            var otherKey = key + new int2(dx, dy);
+                            otherKey = (otherKey + mapSize) % mapSize;
+                            var index = otherKey.y * Constants.MapSize + otherKey.x;
+                            var total = countArray[index] += count;
+
+                            if (total <= max) continue;
+                            max = total;
+                            maxKey = otherKey;
+                        }
+                    }
                 }
 
                 var positionTypeHandle = SystemAPI.GetComponentTypeHandle<ParticlePosition>(true);
@@ -84,13 +92,13 @@ namespace ParticleLife
                     var access = state.EntityManager.GetCheckedEntityDataAccess();
                     var ecs = access->EntityComponentStore;
                     var positionCount = 0;
-                    for (var dy = -8; dy <= 8; dy++)
+                    for (var dy = -2; dy <= 2; dy++)
                     {
-                        for (var dx = -8; dx <= 8; dx++)
+                        for (var dx = -2; dx <= 2; dx++)
                         {
                             var key = maxKey + new int2(dx, dy);
                             key = (key + mapSize) % mapSize;
-                            
+
                             foreach (var archetypeIndex in map.GetValuesForKey(key))
                             {
                                 var archetype = new ArchetypeChunk(archetypeIndex, ecs);
@@ -115,9 +123,14 @@ namespace ParticleLife
                     new float2(zoomMaxOffset, zoomMaxOffset)
                 );
 
-                var newZoomPosition =  Constants.ImageSize * (normalizedPosition - 0.5f / singleton.ZoomAmount);
-
-                singleton.ZoomLocation = Vector2.SmoothDamp(singleton.ZoomLocation, newZoomPosition, ref _autoSpeed, 5f);
+                var newZoomPosition = Constants.ImageSize * (normalizedPosition - 0.5f / singleton.ZoomAmount);
+                var smoothDampPosition = Vector2.SmoothDamp(
+                    singleton.ZoomLocation,
+                    newZoomPosition,
+                    ref _autoSpeed,
+                    0.05f
+                );
+                singleton.ZoomLocation = smoothDampPosition;
             }
             else
             {
