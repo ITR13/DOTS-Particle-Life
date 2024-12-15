@@ -92,7 +92,7 @@ namespace DefaultNamespace
             }.ScheduleParallel(query, state.Dependency);
         }
 
-        [BurstCompile(FloatPrecision.Low, FloatMode.Fast, OptimizeFor = OptimizeFor.FastCompilation)]
+        [BurstCompile(FloatPrecision.Low, FloatMode.Fast, OptimizeFor = OptimizeFor.FastCompilation, DisableSafetyChecks = true)]
         private struct AttractParticles : IJobChunk
         {
             [ReadOnly] public NativeParallelMultiHashMap<int2, ArchetypeChunk> ChunkPosToChunk;
@@ -232,23 +232,12 @@ namespace DefaultNamespace
             {
                 for (var i = positions.Length - 1; i > 0; i--)
                 {
+                    var velocityChange = float2.zero;
                     for (var j = 0; j < i; j++)
                     {
                         directions[j] = positions[i] - positions[j];
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
                         distances[j] = math.length(directions[j]);
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
                         directions[j] = math.select(new float2(1, 0), directions[j] / distances[j], distances[j] > 0);
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
                         switch (distances[j])
                         {
                             case < Constants.ForceBeta * Constants.MaxDistance:
@@ -266,22 +255,9 @@ namespace DefaultNamespace
                                 distances[j] = 0;
                                 break;
                         }
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
                         directions[j] *= distances[j];
-                    }
-
-                    var velocityChange = float2.zero;
-                    for (var j = 0; j < i; j++)
-                    {
-                        velocityChange += directions[j];
-                    }
-
-                    for (var j = 0; j < i; j++)
-                    {
                         velocities[j] += directions[j];
+                        velocityChange += directions[j];
                     }
 
                     velocities[i] -= velocityChange;
@@ -299,26 +275,14 @@ namespace DefaultNamespace
                 float2 offset
             )
             {
-                for (var otherIndex = 0; otherIndex < otherPositions.Length; otherIndex++)
+                foreach (var otherPositionWithoutOffset in otherPositions)
                 {
-                    var otherPosition = otherPositions[otherIndex] - offset;
+                    var otherPosition = otherPositionWithoutOffset - offset;
                     for (var i = 0; i < distances.Length; i++)
                     {
                         directions[i] = positions[i] - otherPosition;
-                    }
-
-                    for (var i = 0; i < distances.Length; i++)
-                    {
                         distances[i] = math.length(directions[i]);
-                    }
-
-                    for (var i = 0; i < distances.Length; i++)
-                    {
                         directions[i] = math.select(overlapDir, directions[i] / distances[i], distances[i] > 0);
-                    }
-
-                    for (var i = 0; i < distances.Length; i++)
-                    {
                         switch (distances[i])
                         {
                             case < Constants.ForceBeta * Constants.MaxDistance:
@@ -336,22 +300,14 @@ namespace DefaultNamespace
                                 distances[i] = 0;
                                 break;
                         }
-                    }
-
-                    for (var i = 0; i < distances.Length; i++)
-                    {
                         directions[i] *= distances[i];
-                    }
-
-                    for (var i = 0; i < distances.Length; i++)
-                    {
                         velocities[i] -= directions[i];
                     }
                 }
             }
         }
 
-        [BurstCompile(FloatPrecision.Low, FloatMode.Fast, OptimizeFor = OptimizeFor.FastCompilation)]
+        [BurstCompile(FloatPrecision.Low, FloatMode.Fast, OptimizeFor = OptimizeFor.FastCompilation, DisableSafetyChecks = true)]
         private struct MoveLoopAndUpdateChunkJob : IJobChunk
         {
             [ReadOnly] public ComponentTypeHandle<ParticleVelocity> VelocityTypeHandle;
