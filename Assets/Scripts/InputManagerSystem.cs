@@ -20,11 +20,13 @@ namespace ParticleLife
         private float _swapTimer;
         private float _oldNormalizedPosition;
 
+        private int _zoomTimer, _randomizeTimer;
+
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<SwapChunk>();
-            _random = new Random(1337);
+            _random = new Random(4101231265);
             _otherRandom = new Random(42);
         }
 
@@ -36,7 +38,7 @@ namespace ParticleLife
             if (Input.GetKeyDown(KeyCode.V)) ToggleVis(ref state);
             if (Input.GetKeyDown(KeyCode.T))
             {
-                _auto = (_auto + 1) % 3;
+                _auto = (_auto + 1) % 4;
                 ref var singleton = ref SystemAPI.GetSingletonRW<ParticleImage>().ValueRW;
                 singleton.ZoomAmount = 1;
                 singleton.ZoomLocation = float2.zero;
@@ -52,9 +54,141 @@ namespace ParticleLife
                 _zoom2 = !_zoom2;
             }
 
+            _zoomTimer++;
+            if (_auto == 0) _zoomTimer++;
+            if (_zoomTimer >= 45 * 30)
+            {
+                _zoomTimer = 0;
+                _zoom1 = _otherRandom.NextInt(3) == 0;
+                _zoom2 = _otherRandom.NextInt(3) == 0;
+                _randomizeTimer++;
+
+                var newAuto = _otherRandom.NextInt(16);
+                if (newAuto == 15 && _auto != 2)
+                    _auto = 2;
+                else if (newAuto > 2 || _auto == 0)
+                    _auto = 1;
+                else
+                    _auto = 0;
+
+                if (_otherRandom.NextInt(_randomizeTimer + 1) > 20)
+                {
+                    if (_otherRandom.NextBool())
+                        RandomizeAttraction(ref state);
+                    else
+                        RandomizeAttractionSteps(ref state);
+                }
+            }
+
+
             switch (_auto)
             {
                 case 1:
+                {
+                    if (_swapTimer > 60 * 30 || _targetEntity == Entity.Null)
+                    {
+                        _swapTimer = 0;
+
+                        state.CompleteDependency();
+                        var swapChunk = SystemAPI.GetSingleton<SwapChunk>();
+                        var map = swapChunk.ArchetypeMap;
+                        var keys = map.GetKeyArray(Allocator.Temp);
+                        var maxes = new NativeList<int>(keys.Length, Allocator.Temp);
+                        var maxKeys = new NativeList<int2>(keys.Length, Allocator.Temp);
+                        var mapSize = new int2(Constants.MapSize, Constants.MapSize);
+                        var countArray = new NativeArray<int>(Constants.MapSize * Constants.MapSize, Allocator.Temp);
+                        foreach (var key in keys)
+                        {
+                            var count = 0;
+                            foreach (var archetypeIndex in map.GetValuesForKey(key))
+                            {
+                                count += archetypeIndex.Count;
+                            }
+
+                            for (var dy = -2; dy <= 2; dy++)
+                            {
+                                for (var dx = -2; dx <= 2; dx++)
+                                {
+                                    var otherKey = key + new int2(dx, dy);
+                                    otherKey = (otherKey + mapSize) % mapSize;
+                                    var index = otherKey.y * Constants.MapSize + otherKey.x;
+                                    countArray[index] += count;
+                                }
+                            }
+                        }
+
+                        foreach (var key in keys)
+                        {
+                            var index = key.y * Constants.MapSize + key.x;
+                            var value = -countArray[index];
+                            var maxIndex = maxes.BinarySearch(value);
+                            if (maxIndex < 0) maxIndex = ~maxIndex;
+
+                            maxes.InsertRange(maxIndex, 1);
+                            maxes[maxIndex] = value;
+                            maxKeys.InsertRange(maxIndex, 1);
+                            maxKeys[maxIndex] = key;
+                        }
+
+                        var maxWanted = maxKeys.Length / 4f;
+                        var rTemp = math.sqrt(_otherRandom.NextFloat(maxWanted * maxWanted));
+                        var r = (int)(maxWanted - rTemp - 1);
+                        Debug.Log($"Selected {r} / {maxWanted} ({rTemp / maxWanted})");
+                        var selectedKey = maxKeys[r];
+
+                        var countForKey = map.CountValuesForKey(selectedKey);
+                        var selectedChunkIndex = _otherRandom.NextInt(countForKey);
+
+                        foreach (var chunkIndex in map.GetValuesForKey(selectedKey))
+                        {
+                            if (selectedChunkIndex-- > 0) continue;
+                            unsafe
+                            {
+                                var access = state.EntityManager.GetCheckedEntityDataAccess();
+                                var ecs = access->EntityComponentStore;
+                                var chunk = new ArchetypeChunk(chunkIndex, ecs);
+                                var entityTypeHandle = SystemAPI.GetEntityTypeHandle();
+                                var entities = chunk.GetNativeArray(entityTypeHandle);
+
+                                _targetEntity = entities[_random.NextInt(entities.Length)];
+                            }
+
+                            break;
+                        }
+                    }
+
+                    var pos = SystemAPI.GetComponent<ParticlePosition>(_targetEntity).Value;
+
+
+                    ref var singleton = ref SystemAPI.GetSingletonRW<ParticleImage>().ValueRW;
+                    var wantedZoomAmount = 3;
+                    if (_zoom1) wantedZoomAmount *= 2;
+                    if (_zoom2) wantedZoomAmount *= 4;
+                    var wantedArea = 1f / math.sqrt(wantedZoomAmount);
+                    var currentArea = 1f / math.sqrt(singleton.ZoomAmount);
+                    var newArea = Mathf.MoveTowards(currentArea, wantedArea, 1 / 90f);
+                    singleton.ZoomAmount = 1 / (newArea * newArea);
+
+                    var zoomMinOffset = 1f / (singleton.ZoomAmount * 2);
+                    var zoomMaxOffset = 1 - zoomMinOffset;
+
+                    var normalizedPosition = pos / Constants.MaxSize;
+
+                    var positionDistance =
+                        math.distancesq(normalizedPosition, _oldNormalizedPosition) * singleton.ZoomAmount;
+                    _swapTimer += math.max(5 / (math.pow(1.01f, positionDistance)), 0.1f);
+
+                    normalizedPosition = math.clamp(
+                        normalizedPosition,
+                        new float2(zoomMinOffset, zoomMinOffset),
+                        new float2(zoomMaxOffset, zoomMaxOffset)
+                    );
+
+                    var newZoomPosition = Constants.ImageSize * (normalizedPosition - 0.5f / singleton.ZoomAmount);
+                    singleton.ZoomLocation = newZoomPosition;
+                    break;
+                }
+                case 3:
                 {
                     if (_swapTimer > 60 * 30 || _targetEntity == Entity.Null)
                     {
@@ -94,9 +228,13 @@ namespace ParticleLife
 
 
                     ref var singleton = ref SystemAPI.GetSingletonRW<ParticleImage>().ValueRW;
-                    singleton.ZoomAmount = 3;
-                    if (_zoom1) singleton.ZoomAmount *= 2;
-                    if (_zoom2) singleton.ZoomAmount *= 4;
+                    var wantedZoomAmount = 3;
+                    if (_zoom1) wantedZoomAmount *= 2;
+                    if (_zoom2) wantedZoomAmount *= 4;
+                    var wantedArea = 1f / math.sqrt(wantedZoomAmount);
+                    var currentArea = 1f / math.sqrt(singleton.ZoomAmount);
+                    var newArea = Mathf.MoveTowards(currentArea, wantedArea, 1 / 90f);
+                    singleton.ZoomAmount = 1 / (newArea * newArea);
 
                     var zoomMinOffset = 1f / (singleton.ZoomAmount * 2);
                     var zoomMaxOffset = 1 - zoomMinOffset;
@@ -105,7 +243,7 @@ namespace ParticleLife
 
                     var positionDistance =
                         math.distancesq(normalizedPosition, _oldNormalizedPosition) * singleton.ZoomAmount;
-                    _swapTimer += math.max(10 / (math.pow(1.01f, positionDistance)), 0.1f);
+                    _swapTimer += math.max(5 / (math.pow(1.01f, positionDistance)), 0.1f);
 
                     normalizedPosition = math.clamp(
                         normalizedPosition,
@@ -121,9 +259,14 @@ namespace ParticleLife
                 {
                     state.CompleteDependency();
                     ref var singleton = ref SystemAPI.GetSingletonRW<ParticleImage>().ValueRW;
-                    singleton.ZoomAmount = 3;
-                    if (_zoom1) singleton.ZoomAmount *= 2;
-                    if (_zoom2) singleton.ZoomAmount *= 4;
+                    var wantedZoomAmount = 3;
+                    if (_zoom1) wantedZoomAmount *= 2;
+                    if (_zoom2) wantedZoomAmount *= 4;
+
+                    var wantedArea = 1f / math.sqrt(wantedZoomAmount);
+                    var currentArea = 1f / math.sqrt(singleton.ZoomAmount);
+                    var newArea = Mathf.MoveTowards(currentArea, wantedArea, 1 / 90f);
+                    singleton.ZoomAmount = 1 / (newArea * newArea);
 
                     var swapChunk = SystemAPI.GetSingleton<SwapChunk>();
                     var map = swapChunk.ArchetypeMap;
@@ -210,9 +353,14 @@ namespace ParticleLife
                     if (Input.GetMouseButton(0))
                     {
                         ref var singleton = ref SystemAPI.GetSingletonRW<ParticleImage>().ValueRW;
-                        singleton.ZoomAmount = 4;
-                        if (_zoom1) singleton.ZoomAmount *= 2;
-                        if (_zoom2) singleton.ZoomAmount *= 4;
+                        var wantedZoomAmount = 4;
+                        if (_zoom1) wantedZoomAmount *= 2;
+                        if (_zoom2) wantedZoomAmount *= 4;
+
+                        var wantedArea = 1f / math.sqrt(wantedZoomAmount);
+                        var currentArea = 1f / math.sqrt(singleton.ZoomAmount);
+                        var newArea = Mathf.MoveTowards(currentArea, wantedArea, 1 / 90f);
+                        singleton.ZoomAmount = 1 / (newArea * newArea);
 
                         var mousePos = Input.mousePosition;
 
@@ -246,11 +394,32 @@ namespace ParticleLife
                         singleton.ZoomLocation =
                             Constants.ImageSize * (normalizedMousePos - 0.5f / singleton.ZoomAmount);
                     }
-                    else if (Input.GetMouseButtonUp(0))
+                    else
                     {
                         ref var singleton = ref SystemAPI.GetSingletonRW<ParticleImage>().ValueRW;
-                        singleton.ZoomAmount = 1;
-                        singleton.ZoomLocation = float2.zero;
+                        var wantedArea = 1f;
+                        var currentArea = 1 / math.sqrt(singleton.ZoomAmount);
+                        var newArea = Mathf.MoveTowards(currentArea, wantedArea, 1 / 90f);
+                        var normalizedPosition =
+                            singleton.ZoomLocation / Constants.ImageSize + 0.5f / singleton.ZoomAmount;
+                        singleton.ZoomAmount = 1 / (newArea * newArea);
+
+                        var zoomMinOffset = 1f / (singleton.ZoomAmount * 2);
+                        var zoomMaxOffset = 1 - zoomMinOffset;
+
+
+                        var positionDistance =
+                            math.distancesq(normalizedPosition, _oldNormalizedPosition) * singleton.ZoomAmount;
+                        _swapTimer += math.max(10 / (math.pow(1.01f, positionDistance)), 0.1f);
+
+                        normalizedPosition = math.clamp(
+                            normalizedPosition,
+                            new float2(zoomMinOffset, zoomMinOffset),
+                            new float2(zoomMaxOffset, zoomMaxOffset)
+                        );
+
+                        var newZoomPosition = Constants.ImageSize * (normalizedPosition - 0.5f / singleton.ZoomAmount);
+                        singleton.ZoomLocation = newZoomPosition;
                     }
 
                     break;
